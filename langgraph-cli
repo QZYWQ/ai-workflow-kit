@@ -393,12 +393,189 @@ def config(key: str = typer.Argument(None), value: str = typer.Argument(None),
         cp.write_text(json.dumps(cfg,indent=2,ensure_ascii=False)+"\n"); typer.echo(f"✅ {key}={cfg[key]}")
     elif key: typer.echo(json.dumps(cfg.get(key,"未设置"),ensure_ascii=False))
 
+# ======================== pre-analyze ========================
+def pre_analyze(target: Path) -> dict:
+    """Scan project and detect characteristics for the 25% project-specific fill."""
+    info = {
+        "project_type": "unknown",
+        "has_src_code": False,
+        "has_test_code": False,
+        "has_scripts": False,
+        "scripts_count": 0,
+        "has_harness": False,
+        "has_api_client": False,
+        "api_client_paths": [],
+        "has_credentials": False,
+        "credential_patterns": [],
+        "has_runs_dir": False,
+        "runs_size_mb": 0,
+        "data_dirs": [],
+        "has_node_scripts": False,
+        "has_python_scripts": False,
+        "has_playwright": False,
+        "detected_words": [],
+    }
+
+    if not target.exists():
+        return info
+
+    # Scan for key files/directories
+    src_dir = target / "src"
+    tests_dir = target / "tests"
+    scripts_dir = target / "scripts"
+    harness_dir = target / "harness"
+    runs_dir = target / "runs"
+
+    # src/: check if has actual code files (not just CLAUDE.md)
+    if src_dir.exists():
+        py_files = list(src_dir.glob("*.py")) + list(src_dir.rglob("*.py"))
+        if py_files:
+            info["has_src_code"] = True
+
+    # tests/: check if has actual test files
+    if tests_dir.exists():
+        test_files = list(tests_dir.glob("test_*.py")) + list(tests_dir.glob("*_test.py"))
+        if test_files:
+            info["has_test_code"] = True
+
+    # scripts/: count and categorize
+    if scripts_dir.exists():
+        py_scripts = [f for f in scripts_dir.rglob("*.py") if f.name != "__init__.py" and "archive" not in f.parts]
+        js_scripts = list(scripts_dir.rglob("*.js"))
+        sh_scripts = list(scripts_dir.rglob("*.sh"))
+        if py_scripts:
+            info["has_python_scripts"] = True
+        if js_scripts:
+            info["has_node_scripts"] = True
+        info["has_scripts"] = bool(py_scripts or js_scripts)
+        info["scripts_count"] = len(py_scripts) + len(js_scripts) + len(sh_scripts)
+
+    # API client detection
+    for pattern in ["*api*client*", "*wqb_api*", "*brain_api*", "*machine_lib*"]:
+        matches = list(target.rglob(pattern))
+        for m in matches:
+            if ".venv" not in str(m) and "__pycache__" not in str(m) and ".git" not in str(m):
+                info["has_api_client"] = True
+                info["api_client_paths"].append(str(m.relative_to(target)))
+
+    # Credential detection
+    for pattern in ["*credential*", "*config.env*", "*session_creds*"]:
+        matches = list(target.rglob(pattern))
+        for m in matches:
+            if ".venv" not in str(m) and "__pycache__" not in str(m) and ".git" not in str(m):
+                info["has_credentials"] = True
+                info["credential_patterns"].append(str(m.relative_to(target)).split("/")[-1])
+
+    # Playwright detection
+    pw_matches = list(target.rglob("*playwright*"))
+    info["has_playwright"] = any(".venv" not in str(m) and "__pycache__" not in str(m) for m in pw_matches)
+
+    # Harness
+    if harness_dir.exists():
+        info["has_harness"] = True
+
+    # Runs/data directory
+    if runs_dir.exists():
+        info["has_runs_dir"] = True
+        try:
+            import subprocess
+            result = subprocess.run(["du", "-sh", str(runs_dir)], capture_output=True, text=True, timeout=5)
+            size_str = result.stdout.split()[0]
+            if "M" in size_str:
+                info["runs_size_mb"] = int(float(size_str.replace("M","")))
+            elif "G" in size_str:
+                info["runs_size_mb"] = int(float(size_str.replace("G","")) * 1024)
+            elif "K" in size_str:
+                info["runs_size_mb"] = int(float(size_str.replace("K","")) / 1024)
+        except:
+            pass
+
+    # Detect project type by keyword scanning
+    type_checks = []
+    for path in list(target.rglob("*.py"))[:50] + list(target.rglob("*.md"))[:10]:
+        if ".venv" in str(path) or ".git" in str(path):
+            continue
+        try:
+            content = path.read_text()
+            for word in ["alpha", "sharpe", "BRAIN", "WorldQuant", "simulation", "expression",
+                        "self_correlation", "fitness", "turnover", "submission"]:
+                if word.lower() in content.lower() and word not in info["detected_words"]:
+                    info["detected_words"].append(word)
+        except:
+            pass
+
+    # Classify project type
+    brain_keywords = {"alpha", "sharpe", "BRAIN", "WorldQuant", "simulation", "self_correlation", "fitness"}
+    if len(set(w.lower() for w in info["detected_words"]) & brain_keywords) >= 3:
+        info["project_type"] = "alpha-research"
+    elif info["has_api_client"]:
+        info["project_type"] = "api-service"
+    elif info["has_src_code"] and info["has_test_code"]:
+        info["project_type"] = "library-or-app"
+    elif info["has_scripts"]:
+        info["project_type"] = "script-toolkit"
+    elif info["has_harness"]:
+        info["project_type"] = "harness-project"
+
+    return info
+
+
+def _fill_project_section(info: dict) -> str:
+    """Generate the 25% project-specific section from pre-analyze results."""
+    lines = ["### 路径 B 项目专属\n"]
+    if info["has_credentials"]:
+        lines.append(f"- 安全扫描排除：{', '.join(info['credential_patterns'])}（已 gitignore）\n")
+    if info["has_scripts"]:
+        lines.append(f"- 脚本归档路径：scripts/archive/\n")
+    if info["has_runs_dir"]:
+        lines.append(f"- 数据产出目录：runs/（{info['runs_size_mb']}MB）\n")
+    if not any([info["has_credentials"], info["has_scripts"], info["has_runs_dir"]]):
+        lines.append("- 暂无专项配置\n")
+
+    lines.append("\n### 路径 C 项目专属\n")
+    if info["has_api_client"]:
+        lines.append(f"- API 客户端：{', '.join(info['api_client_paths'][:3])}\n")
+    if info["has_playwright"]:
+        lines.append("- 已检测到 Playwright 浏览器自动化脚本\n")
+    if info["has_credentials"]:
+        lines.append(f"- 凭据文件模式：{', '.join(info['credential_patterns'][:3])}\n")
+    if not any([info["has_api_client"], info["has_playwright"]]):
+        lines.append("- 暂无专项配置\n")
+
+    lines.append("\n### 路径 D 项目专属\n")
+    if info["has_test_code"]:
+        lines.append("- 测试框架：pytest（检测到 test_*.py 文件）\n")
+    else:
+        lines.append("- 测试框架：待配置（项目中未检测到测试文件）\n")
+    lines.append("- 编码语言：Python")
+    if info["has_node_scripts"]:
+        lines.append(" + Node.js（Playwright 脚本）\n")
+    else:
+        lines.append("\n")
+
+    lines.append("\n### 检测到的项目类型\n")
+    lines.append(f"- 项目分类：{info['project_type']}\n")
+    if info["detected_words"]:
+        lines.append(f"- 关键领域词：{', '.join(info['detected_words'][:15])}\n")
+    lines.append(f"- 脚本数量：{info['scripts_count']}\n")
+    if info["has_harness"]:
+        lines.append("- 检测到 harness 编排系统\n")
+
+    return "".join(lines)
+
+
 # ======================== init ========================
 @app.command()
 def init(directory: str = typer.Option(".","--dir","-d"),
          deep: bool = typer.Option(False,"--deep")):
     target = Path(directory).resolve()
     wf_dir = target/".langgraph"/"workflows"; wf_dir.mkdir(parents=True, exist_ok=True)
+
+    # Pre-analyze project
+    info = pre_analyze(target)
+    if info["project_type"] != "unknown":
+        typer.echo(f"  🔍 检测到项目类型: {info['project_type']} ({info['scripts_count']} 脚本)")
+    project_section = _fill_project_section(info)
 
     (wf_dir/"code-review.yaml").write_text("""\
 workflow:
@@ -464,139 +641,197 @@ workflow:
         cp.write_text(json.dumps({"model":"deepseek-v4-pro","provider":"claude",
             "remember_before_run":True,"gitnexus_enabled":True,"omega_enabled":True},indent=2,ensure_ascii=False)+"\n")
 
-    # CLAUDE.md
-    (target/".langgraph"/"CLAUDE.md").write_text("""\
+    # CLAUDE.md — static protocol (75%) + pre-analyzed project section (25%)
+    claude_md_protocol = """\
 # LangGraph 项目工作流
 
 langgraph-cli 全局安装。本目录含工作流(.langgraph/workflows/)和长期记忆(.langgraph/memory/)。
 
-══════════════════════════════
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
+⛔ 强制路由规则（每次收到任务后，第一个动作不是执行，是分类）
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
+
+收到任务后，按顺序执行以下步骤。除路径 A 外，其余路径**禁止跳过路由直接 Bash/Python**。
+
+### 步骤 1：任务分类（匹配模式，走对应路径）
+
+路径 A：琐碎任务 — 自由发挥
+  匹配：单行修改、拼写、加一行日志、读文件、解释代码、
+       改一个变量名、回答简单问题
+  条件：≤3 个独立动作 且 不涉及外部 API 且 不涉及破坏性操作
+  执行：直接完成。不需要加载 skill，不需要走工作流。
+
+路径 B：运维分析 — langgraph-cli analyze 流程
+  匹配：审计、扫描、清理、冗余分析、数据膨胀、安全审查、
+       代码质量、依赖检查、项目健康、重构建议
+  执行：
+    1. Skill("langgraph-cli")   ← 加载 skill，让 analyze/run 可用
+    2. langgraph-cli analyze .   ← 全局项目分析
+    3. 按结果结构化计划           ← 等待用户确认
+    4. 确认后执行
+
+路径 C：平台操作 / API 调用 — 工作流编排
+  匹配：提交、标记、同步、批量操作、API 调用、账户管理、
+       外部服务交互、数据抓取
+  执行：
+    1. Skill("langgraph-cli")
+    2. 声明步骤计划 → 等待用户确认
+    3. 确认后执行（逐步骤，遇错误暂停汇报）
+    4. 操作结果写入 runs/ 对应目录
+
+路径 D：编码实现 — TDD + 审查
+  匹配：新功能、修改业务逻辑、重构、添加模块、写库代码
+  执行：
+    1. Skill("langgraph-cli")
+    2. GitNexus 查已有实现（避免重复）
+    3. Grill-with-docs 需求对齐（非琐碎实现）
+    4. TDD：测试 → 失败 → 实现 → 通过
+    5. langgraph-cli review 变更
+
+路径 E：故障诊断 — 诊断闭环
+  匹配：bug、报错、不工作、调试、异常、性能
+  执行：
+    1. Skill("diagnose")
+    2. 重现 → 定位 → 最小修复 → 回归验证
+
+路径 F：设计规划 — 理解 → 方案
+  匹配：架构设计、方案选择、技术决策、怎么实现
+  执行：
+    1. Skill("langgraph-cli")
+    2. langgraph-cli analyze 或 GitNexus context
+    3. 输出结构化方案 → 等待确认 → 确认后走路径 D 实现
+
+### 步骤 2：⛔ 硬性禁止（路径 B–F 适用）
+
+在完成上述路由步骤前：
+  ✗ 禁止直接使用 Bash 执行分析、操作、API 调用
+  ✗ 禁止未加载 skill 就使用 analyze/run/review 命令
+  ✗ 禁止跳过"等待用户确认"执行破坏性操作
+  ✗ 禁止跳过 GitNexus 检查新增已有能力的代码
+
+路径 A（琐碎任务）不在此限——可自由发挥。
+
+### 步骤 3：路径选择快速参考
+
+| 用户说了 | 路径 | 第一步 |
+|---------|------|--------|
+| "查/看/读/解释" | A（琐碎） | 直接完成 |
+| "审计/扫描/清理/冗余" | B（运维） | Skill("langgraph-cli") |
+| "提交/标记/同步/API" | C（平台） | Skill("langgraph-cli") |
+| "实现/开发/加功能" | D（编码） | Skill("langgraph-cli") + GitNexus |
+| "bug/报错/不工作" | E（诊断） | Skill("diagnose") |
+| "设计/架构/方案" | F（规划） | Skill("langgraph-cli") |
+| 模糊/无法分类 | 先确认再分类 | AskUserQuestion |
+
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
 会话启动协议（新窗口/新会话必执行）
-══════════════════════════════
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
 
 **每次新会话开始时，自动执行以下步骤：**
 
-1. `langgraph-cli recall "<本次任务关键词>"` — 恢复相关的项目决策和约定
 1. OMEGA 已通过 SessionStart hook 自动注入 `omega_welcome`（近期记忆 + 简报）
    - 你（AI）不需要手动调 recall，OMEGA 已经做了
 2. 如果需要更精确搜索：调 `omega_query` 或 `langgraph-cli recall`
-3. 读取 `.langgraph/CLAUDE.md` — 确认当前规则
-4. 如果本目录有 CLAUDE.md 或 AGENTS.md → 读入上下文
+3. 读取 `.langgraph/CLAUDE.md` — **此步骤不可跳过**（含强制路由规则）
+4. 读取项目 CLAUDE.md 或 AGENTS.md — 了解领域知识和项目专属规则
 5. 如果用户提供了 handoff 文件路径 → 读入上次会话状态
+6. 会话启动完成，等待用户任务，过强制路由门
 
-**此步骤不可跳过。** 只有完成以上检查后，才能进入正常的工作流程。
-
-══════════════════════════════
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
 记忆系统分层（防 token 爆炸）
-══════════════════════════════
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
 
 - **OMEGA**（自动）— 捕获教训/决策，语义搜索，定期 consolidate/compact 清理
 - **langgraph-cli remember/recall**（手动）— 用户明确"记住这个"时
 - **handoff**（会话）— "下次继续这个任务"的上下文快照
 
-三套互补，不冲突。OMEGA 自带 token 管理（consolidate 删过期、compact 压缩）。
+三套互补，不冲突。OMEGA 自带 token 管理。
 
-══════════════════════════════
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
+两阶段执行协议（路径 D/F 适用）
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
+
+【阶段1】理解 — grill-with-docs 优先（路径 D 编码前必须）
+- 编码前完成需求对齐，ultrawork"不问"规则暂停
+- 查 GitNexus 确认无已有代码可复用
+- 路径 B/C/E 的理解阶段：analyze/检查/定位 → 结构化计划
+
+【阶段2】执行 — ultrawork 接管
+- 阶段1完成后开始，纪律：不降级、不停止、强制验证
+- 路径 C（平台操作）的"等待用户确认"不在阶段2范围内，用户确认后方可执行
+
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
 规则自管理（AI 必读）
-══════════════════════════════
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
 
 收到"加规则"、"记决策"等指令，自动判断类型写入：
-- 项目通用规则 → .langgraph/CLAUDE.md
+- 项目通用规则 → .langgraph/CLAUDE.md（本文件"项目专属覆盖"区域）
 - 编码规范 → src/CLAUDE.md
 - 测试纪律 → tests/CLAUDE.md
-- 可执行工作流 → .langgraph/workflows/ 新建YAML
+- 可执行工作流 → .langgraph/workflows/ 新建 YAML
 - 一次性决策 → `langgraph-cli remember "内容" -t "标签"`
 
 每次任务前：OMEGA 自动注入 + 需要时 `langgraph-cli recall`
 
-══════════════════════════════
-方法论选择
-══════════════════════════════
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
+langgraph-cli 命令速查
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
 
-| 任务 | 方法论 |
-|------|--------|
-| 新功能 | SDD（grill-with-docs → to-prd → 编码）|
-| 复杂业务 | DDD（zoom-out → 领域建模 → 架构 → 编码）|
-| 所有实现 | TDD（tdd → 测试 → 实现）|
-| Bug | diagnose → 重现 → 最小修复 → 回归测试 |
-| 原型 | prototype → caveman 极简验证 |
-
-编码前强制检查：已查GitNexus？完成grill-with-docs？评估过度工程？
-
-══════════════════════════════
-两阶段执行协议
-══════════════════════════════
-
-【阶段1】理解 — grill-with-docs 优先
-- 编码前必须通过grill-with-docs完成需求对齐
-- 此阶段ultrawork"不问"规则暂停
-- 查GitNexus确认无已有代码
-
-【阶段2】执行 — ultrawork 接管
-- grill-with-docs完成（文档已更新）后开始
-- ultrawork纪律：不降级、不停止、强制验证
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-一、langgraph-cli 命令速查
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-- review <代码> — 并行审查
+- analyze . — 项目结构分析（路径 B/F 第一步）
+- review <代码> — 并行安全+质量审查
+- impact <符号> — 修改影响范围
+- context <符号> — GitNexus 符号上下文
+- run workflow.yaml -i — 执行工作流 YAML
+- remember "内容" -t "标签" — 长期记忆
+- recall "关键词" — 记忆搜索
 - test <代码> -o 输出 — 生成测试
 - refactor <代码> — 重构建议
-- analyze . — 项目分析
-- context <符号> — GitNexus上下文
-- impact <符号> — 影响范围
-- pr — PR描述
-- run workflow.yaml -i — 工作流
-- remember "内容" -t "标签" — 记忆
-- recall "关键词" — 搜索
+- pr — PR 描述生成
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-二、标准工程工作流
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
+通用约束（所有路径）
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
 
-1. GitNexus图谱对齐
-2. 结构化计划，等待确认
-3. 确认后开始编码
-4. 技能驱动执行
-5. TDD：测试→失败→实现→通过
-6. 增量提交
-7. GitNexus重索引
+- 优先使用已有代码：新增加前用 GitNexus 确认无已有能力可复用
+- 最小变更：声明假设，歧义停。评估过度工程。手术式修改
+- Python: 4空格,snake_case,PascalCase。格式化。不提交凭据
+- 未经批准不修改源码。不主动重构。不破坏性命令。不暴露密钥
 
-对应skill（按阶段）：
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
+项目专属覆盖（由 langgraph-cli init 自动分析填充）
+⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
 
-【理解】grill-with-docs / zoom-out
-【计划】to-prd / langgraph-cli analyze
-【编码】tdd / prototype / caveman
-【审查】langgraph-cli review / oh-my-claude code-reviewer/validator / langgraph-cli impact
-【Bug】diagnose / triage
-【上下文】langgraph-cli remember-rec / handoff / GitNexus
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-三、最高优先级：优先使用已有代码
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-新增代码前，用GitNexus确认无已有能力可复用。找到→优先连线/配置/测试。无→实现新代码。
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-四、最小变更原则
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-声明假设，歧义停。评估过度工程。最小变更。手术式修改。每行追溯至需求。bug默认本地修复+回归。
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-五、编码规范 / Agent约束
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Python: 4空格,snake_case,PascalCase。格式化。不提交凭据。
-未经批准不修改源码。不主动重构。不破坏性命令。不暴露密钥。
-""")
+"""
+    (target/".langgraph"/"CLAUDE.md").write_text(claude_md_protocol + project_section)
 
     if deep:
-        (target/"src").mkdir(exist_ok=True); (target/"tests").mkdir(exist_ok=True)
-        (target/"src"/"CLAUDE.md").write_text("# 编码规则 (src/)\n\n- 类型注解、文档\n- TDD先测试\n- 改前查GitNexus\n- 手术式修改\n")
-        (target/"tests"/"CLAUDE.md").write_text("# 测试规则 (tests/)\n\n- TDD: 失败→实现→通过\n- 覆盖正常/边界/错误\n- test_<功能>_<场景>\n")
-        typer.echo("  ├── src/CLAUDE.md + tests/CLAUDE.md")
+        deep_created = []
+        # Only create src/CLAUDE.md if src/ has actual code
+        if info["has_src_code"]:
+            (target/"src").mkdir(exist_ok=True)
+            (target/"src"/"CLAUDE.md").write_text(
+                f"# 编码规则 (src/)\n\n"
+                f"- Python: 4空格缩进, snake_case, PascalCase 类\n"
+                f"- 每个公开函数/类有类型注解和文档字符串\n"
+                f"- 修改代码前先写测试（TDD），测试用 pytest\n"
+                f"- 改前查 GitNexus context/impact\n"
+                f"- 手术式修改，不改无关代码\n")
+            deep_created.append("src/CLAUDE.md")
+        # Only create tests/CLAUDE.md if tests/ has test files
+        if info["has_test_code"]:
+            (target/"tests").mkdir(exist_ok=True)
+            (target/"tests"/"CLAUDE.md").write_text(
+                f"# 测试规则 (tests/)\n\n"
+                f"- TDD 纪律：先写测试，看到测试失败，再实现\n"
+                f"- 测试覆盖正常路径、边界条件、错误路径\n"
+                f"- 命名：文件 test_*.py，函数 test_<功能>_<场景>\n"
+                f"- 运行：pytest tests/ -v\n"
+                f"- 测试不通过不能合并\n")
+            deep_created.append("tests/CLAUDE.md")
+        if deep_created:
+            typer.echo("  ├── " + " + ".join(deep_created))
+        else:
+            typer.echo("  ├── (src/ tests/ 无代码，跳过 CLAUDE.md 生成)")
 
     typer.echo(f"✅ 已初始化到 {wf_dir}/")
     typer.echo("  ├── code-review.yaml / fix-bug.yaml / add-feature.yaml / CLAUDE.md")
