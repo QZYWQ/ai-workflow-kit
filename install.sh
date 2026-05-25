@@ -32,16 +32,11 @@ npx --yes skills add mattpocock/skills 2>/dev/null || \
 
 # ====== 5. oh-my-claude ======
 echo "→ oh-my-claude..."
-if [ -f "$HOME/.claude.json" ]; then
-    python3 -c "
-import json
-with open('$HOME/.claude.json') as f: c=json.load(f)
-plugins=c.get('projects',{}).get('$HOME',{}).get('enabledPlugins',{})
-print('已装' if 'oh-my-claude@oh-my-claude' in plugins else \
-      '请运行: /plugin marketplace add oh-my-claude && /plugin install oh-my-claude@oh-my-claude')
-" 2>/dev/null
+if [ -d "$HOME/.claude/plugins/cache/oh-my-claude" ]; then
+    echo "  (已安装)"
 else
-    echo "  请运行: /plugin marketplace add oh-my-claude && /plugin install oh-my-claude@oh-my-claude"
+    echo "  请在 Claude Code 中运行: /plugin marketplace add oh-my-claude"
+    echo "  然后: /plugin install oh-my-claude@oh-my-claude"
 fi
 
 # ====== 6. Skill 注册 ======
