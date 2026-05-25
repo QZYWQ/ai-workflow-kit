@@ -567,7 +567,8 @@ def _fill_project_section(info: dict) -> str:
 # ======================== init ========================
 @app.command()
 def init(directory: str = typer.Option(".","--dir","-d"),
-         deep: bool = typer.Option(False,"--deep")):
+         deep: bool = typer.Option(False,"--deep"),
+         force: bool = typer.Option(False,"--force")):
     target = Path(directory).resolve()
     wf_dir = target/".langgraph"/"workflows"; wf_dir.mkdir(parents=True, exist_ok=True)
 
@@ -576,6 +577,7 @@ def init(directory: str = typer.Option(".","--dir","-d"),
     if info["project_type"] != "unknown":
         typer.echo(f"  🔍 检测到项目类型: {info['project_type']} ({info['scripts_count']} 脚本)")
     project_section = _fill_project_section(info)
+    claude_md_path = target/".langgraph"/"CLAUDE.md"
 
     (wf_dir/"code-review.yaml").write_text("""\
 workflow:
@@ -821,11 +823,15 @@ langgraph-cli 命令速查
 - 未经批准不修改源码。不主动重构。不破坏性命令。不暴露密钥
 
 ⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
-项目专属覆盖（由 langgraph-cli init 自动分析填充）
+项目专属覆盖（由 langgraph-cli init 自动分析填充，后续由 AI 按需更新）
 ⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻⸻
 
 """
-    (target/".langgraph"/"CLAUDE.md").write_text(claude_md_protocol + project_section)
+    if claude_md_path.exists() and not force:
+        typer.echo("  ⏭ .langgraph/CLAUDE.md 已存在（跳过覆盖。使用 --force 可强制刷新协议模板）")
+        typer.echo("     项目专属覆盖区域可手动编辑，不会被后续 init 覆盖")
+    else:
+        (target/".langgraph"/"CLAUDE.md").write_text(claude_md_protocol + project_section)
 
     if deep:
         deep_created = []
@@ -868,9 +874,14 @@ langgraph-cli 命令速查
         typer.echo("  ├── CLAUDE.md（项目根目录，含路由门引用）")
     else:
         ref_line = ".langgraph/CLAUDE.md"
-        if ref_line not in root_claude.read_text():
-            typer.echo(f"  ⚠ 根目录 CLAUDE.md 未引用 .langgraph/CLAUDE.md — 路由门可能不生效")
-            typer.echo(f"    建议在根 CLAUDE.md 顶部加：> ⛔ 强制路由规则见 .langgraph/CLAUDE.md")
+        existing = root_claude.read_text()
+        if ref_line in existing:
+            typer.echo("  ✓ 根目录 CLAUDE.md 已引用路由门")
+        else:
+            typer.echo(f"  ⚠ 根目录 CLAUDE.md 未引用 .langgraph/CLAUDE.md")
+            typer.echo(f"    路由门不会自动生效。请在文件顶部加入：")
+            typer.echo(f"    > ⛔ 强制路由规则见 .langgraph/CLAUDE.md")
+            typer.echo(f"    不加这行 = 本项目不走工作流 = 原生 Claude Code 模式")
 
     typer.echo(f"✅ 已初始化到 {wf_dir}/")
     typer.echo("  ├── code-review.yaml / fix-bug.yaml / add-feature.yaml / api-batch.yaml / CLAUDE.md")
