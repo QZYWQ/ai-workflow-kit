@@ -37,7 +37,7 @@ if [ -d "$HOME/.omega" ]; then
     echo "  (已配置)"
 else
     ~/.venv/langgraph/bin/omega setup --client claude-code 2>/dev/null || \
-        ~/.local/bin/omega setup --client claude-code 2>/dev/null || \
+        which omega 2>/dev/null && omega setup --client claude-code 2>/dev/null || \
         echo "  ⚠ 手动: omega setup --client claude-code"
 fi
 

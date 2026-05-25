@@ -1,6 +1,6 @@
 ---
 name: langgraph-cli
-description: "多智能体开发助手 CLI。新项目用 /langgraph init 初始化。提供代码分析（review/context/impact）、长期记忆（remember/recall）、YAML 工作流（run）。审查层+上下文层的核心工具。"
+description: "执行层+上下文层 CLI。新项目用 /langgraph init 初始化。代码分析（review/context/impact）、YAML 工作流（run）、手动记忆（remember/recall）。OMEGA 负责自动长期记忆、本工具负责显式记忆和执行编排。健康检查（health）。"
 allowed-tools:
   - Bash(langgraph-cli *)
   - Bash(git *)
@@ -62,4 +62,5 @@ gitnexus analyze .              # 建代码图谱
 | 执行 | `run workflow.yaml -i k=v` | YAML 工作流 |
 | 执行 | `pr` | PR 描述生成 |
 | 辅助 | `ask / test / doc / refactor` | 常规辅助 |
+| 健康 | `health` | 全组件健康检查 |
 | 初始化 | `init [--deep]` | 项目初始化 |

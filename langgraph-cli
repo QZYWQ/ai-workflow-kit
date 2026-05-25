@@ -344,6 +344,37 @@ def recall(query: str = typer.Argument(...)):
         if r['tags']: typer.echo(f"     {r['tags']}")
         typer.echo(f"     {r['time']}\n")
 
+
+@app.command()
+def health():
+    """统一健康检查"""
+    import shutil
+    results = {}
+    try:
+        import omega; results["omega"] = "✅"
+    except: results["omega"] = "❌ 未安装"
+    try:
+        import langgraph, langchain_anthropic, typer, yaml
+        results["langgraph-cli"] = "✅"
+    except: results["langgraph-cli"] = "❌"
+    gnx = shutil.which("gitnexus")
+    results["gitnexus"] = "✅" if gnx else "❌"
+    odb = Path.home() / ".omega" / "omega.db"
+    results["omega_db"] = "✅" if odb.exists() else "❌"
+    cli = shutil.which("langgraph-cli")
+    results["cli_path"] = "✅" if cli else "❌"
+    venv = Path.home() / ".venv" / "langgraph"
+    results["venv"] = "✅" if venv.is_dir() else "❌"
+    lg = Path(".langgraph")
+    results["project"] = "✅ 已初始化" if lg.is_dir() else "⚠ 未初始化"
+    typer.echo(heading("健康检查"))
+    for k, v in results.items():
+        typer.echo(f"  {k:20s} {v}")
+    ok = sum(1 for v in results.values() if "✅" in str(v))
+    typer.echo(f"\n  {ok}/{len(results)} 通过")
+
+
+
 # ======================== config ========================
 @app.command()
 def config(key: str = typer.Argument(None), value: str = typer.Argument(None),
@@ -431,7 +462,7 @@ workflow:
     cp = target/".langgraph"/"config.json"
     if not cp.exists():
         cp.write_text(json.dumps({"model":"deepseek-v4-pro","provider":"claude",
-            "remember_before_run":True,"gitnexus_enabled":True},indent=2,ensure_ascii=False)+"\n")
+            "remember_before_run":True,"gitnexus_enabled":True,"omega_enabled":True},indent=2,ensure_ascii=False)+"\n")
 
     # CLAUDE.md
     (target/".langgraph"/"CLAUDE.md").write_text("""\
