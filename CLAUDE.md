@@ -1,63 +1,46 @@
 # AI Workflow Kit
 
-通用 AI 辅助开发工作流套件。克隆后按下方说明自动安装。
+通用 AI 辅助开发工作流套件。
 
 ## 你（AI）需要做的第一件事
 
-读这个文件后，自动执行：
-1. `bash install.sh` — 安装所有依赖
-2. 完成后回复用户"工作流已就绪，在任何项目目录下运行 `langgraph-cli init` 即可初始化"
-3. 如果用户在已有项目中，cd 到项目目录后运行 `langgraph-cli init [--deep]`
+读取本文件后，按序执行：
 
-## 这是什么
+1. `bash install.sh` — 一键安装所有组件
+2. 检查 `~/.claude/settings.json` 中是否有 `ANTHROPIC_BASE_URL` 和 `ANTHROPIC_AUTH_TOKEN`
+3. 如果 oh-my-claude 未安装，引导用户运行：
+   `/plugin marketplace add oh-my-claude && /plugin install oh-my-claude@oh-my-claude`
+4. 完成后回复："工作流就绪。新项目: `langgraph-cli init`，已有项目: cd 进去后 `langgraph-cli init [--deep]`"
 
-一套可复用的 AI 辅助开发工作流，包含：
-- **langgraph-cli** — 多智能体编排 CLI（代码审查、测试、记忆、YAML 工作流）
-- **Matt Pocock skills** — 需求对齐、TDD、调试等 14 个方法论 skill
-- **GitNexus** — 代码知识图谱（跨会话持久化代码结构理解）
-- **两阶段执行协议** — grill-with-docs 理解阶段 + ultrawork 执行阶段
+## 安装的完整组件
 
-## 安装包含
+| 组件 | 来源 | 作用 |
+|------|------|------|
+| langgraph-cli | Python 脚本 | 审查/测试/记忆/YAML 工作流（14 命令）|
+| GitNexus | npm | 代码知识图谱（context/impact）|
+| Matt Pocock skills | skills marketplace | grill-with-docs/tdd/diagnose 等 14 个方法论 skill |
+| oh-my-claude | plugin marketplace | 编排纪律、validator/critic/code-reviewer agent |
+| langgraph-cli skill | 本地注册 | Claude Code 识别 langgraph-cli 命令 |
 
-| 组件 | 用途 | 安装方式 |
-|------|------|---------|
-| langgraph-cli | 14 个命令的 CLI | Python venv + pip |
-| GitNexus | 代码知识图谱 | npm -g |
-| Matt Pocock skills | 14 个方法论 skill | npx skills add |
-| pyyaml | YAML 工作流解析 | pip |
+## 纯净 Claude Code 没有、这套补齐的全部东西
 
-## 使用流程
+- **多智能体并行执行引擎** — langgraph-cli run（YAML 工作流）
+- **代码知识图谱** — GitNexus context/impact
+- **需求对齐** — grill-with-docs
+- **TDD 方法论 skill** — Matt Pocock tdd
+- **代码审查 agent** — oh-my-claude code-reviewer
+- **验证门禁** — oh-my-claude validator
+- **长期记忆** — langgraph-cli remember/recall
+- **项目规则体系** — .langgraph/CLAUDE.md（AI 自管理）
+- **两阶段执行协议** — 理解（grill）→ 执行（ultrawork）
 
-```bash
-# 新项目
-cd 新项目
-langgraph-cli init [--deep]     # 生成 .langgraph/ 规则+工作流
-gitnexus analyze .               # 建代码图谱
-langgraph-cli remember "项目定位" -t "概况"  # 种初始记忆
+## 工作流概览
 
-# 已有项目
-langgraph-cli init [--deep]
-
-# CLI 手动使用
-langgraph-cli review file.py    # 并行安全+质量审查
-langgraph-cli pr                 # 生成 PR 描述
-langgraph-cli context 函数名     # 查代码图谱上下文
-langgraph-cli impact 函数名      # 查修改影响范围
-langgraph-cli remember "决策" -t "标签"  # 持久化记忆
-langgraph-cli recall "关键词"    # 搜索记忆
-langgraph-cli run workflow.yaml -i x=y  # 执行工作流
-langgraph-cli analyze .          # 项目结构分析
 ```
-
-## Skill 触发时机
-
-| 阶段 | 工具 |
-|------|------|
-| 理解 | grill-with-docs、zoom-out |
-| 计划 | to-prd、langgraph-cli analyze |
-| 编码 | tdd、prototype、caveman |
-| 审查 | langgraph-cli review、oh-my-claude code-reviewer/validator |
-| Bug | diagnose、triage |
-| 上下文 | langgraph-cli remember/recall、handoff、GitNexus |
+理解 → 计划 → 编码 → 审查 → 上下文
+ grill    to-prd   tdd     review   remember
+ zoom-out analyze  proto   validator recall
+                  caveman  impact    handoff
+```
 
 详见 `docs/TOOL-LAYERING.md`
