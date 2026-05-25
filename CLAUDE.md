@@ -2,6 +2,8 @@
 
 通用 AI 辅助开发工作流套件。
 
+> ⛔ 强制路由规则见 `.langgraph/CLAUDE.md` — **任何非琐碎任务之前必须过路由门**，禁止跳过直接 Bash/编码。
+
 ## 你（AI）需要做的第一件事
 
 读取本文件后，按序执行：
@@ -11,6 +13,7 @@
 3. 如果 oh-my-claude 未安装，引导用户运行：
    `/plugin marketplace add oh-my-claude && /plugin install oh-my-claude@oh-my-claude`
 4. 完成后回复："工作流就绪。新项目: `langgraph-cli init`，已有项目: cd 进去后 `langgraph-cli init [--deep]`"
+5. 进入任何项目时，如果项目目录含有 `.langgraph/CLAUDE.md`，**必须首先读取它**——它包含强制路由规则
 
 ## 安装的完整组件
 

@@ -64,4 +64,18 @@ cp "$SCRIPT_DIR/skills/langgraph-cli/SKILL.md" "$HOME/.claude/skills/langgraph-c
 grep -q '.local/bin' "$HOME/.zshrc" 2>/dev/null || \
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
 
+# ====== 9. 全局路由门规则 ======
+echo "→ 全局路由门规则..."
+GLOBAL_CLAUDE="$HOME/.claude/CLAUDE.md"
+ROUTING_RULE="项目目录如果含有 .langgraph/CLAUDE.md，必须在任何非琐碎任务之前首先读取它——它包含强制路由规则（路径 A-F），禁止跳过路由直接 Bash/编码。"
+if [ -f "$GLOBAL_CLAUDE" ]; then
+    if ! grep -q ".langgraph/CLAUDE.md" "$GLOBAL_CLAUDE" 2>/dev/null; then
+        # Insert after the OMEGA block
+        sed -i '' '/<!-- OMEGA:END -->/a\
+\
+<!-- AI-WORKFLOW-KIT: 路由门 -->\
+'"$ROUTING_RULE" "$GLOBAL_CLAUDE" 2>/dev/null || true
+    fi
+fi
+
 echo "✅ 完成。新项目: langgraph-cli init"
