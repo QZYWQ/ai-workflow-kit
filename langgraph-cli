@@ -1,0 +1,562 @@
+#!/Users/zpdedn/.venv/langgraph/bin/python3
+"""
+langgraph-cli - 多智能体开发助手 CLI
+基于 LangGraph + DeepSeek，代码审查、测试、文档、YAML 工作流、记忆、GitNexus
+"""
+import os, sys, json, re, subprocess
+from pathlib import Path
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+import typer
+from langgraph.graph import StateGraph, START, END
+from typing_extensions import TypedDict
+from langchain_anthropic import ChatAnthropic
+
+# ======================== 配置 ========================
+DEFAULT_MODEL = "deepseek-v4-pro"
+CONFIG_FILE = Path.home() / ".config" / "langgraph-cli" / "config.json"
+
+os.environ.setdefault("ANTHROPIC_BASE_URL", "https://api.deepseek.com/anthropic")
+os.environ.setdefault("ANTHROPIC_API_KEY",
+    os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN", ""))
+
+def load_project_config(cwd=None):
+    for p in [Path(cwd or os.getcwd())] + list(Path(cwd or os.getcwd()).parents):
+        cfg = p / ".langgraph" / "config.json"
+        if cfg.exists():
+            try: return json.loads(cfg.read_text(encoding="utf-8"))
+            except: pass
+    return {}
+
+def get_config(cwd=None):
+    cfg = {}
+    if CONFIG_FILE.exists():
+        try: cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        except: pass
+    cfg.update(load_project_config(cwd))
+    return cfg
+
+def get_model(cwd=None):
+    return get_config(cwd).get("model", DEFAULT_MODEL)
+
+app = typer.Typer(help="多智能体开发助手")
+
+# ======================== 工具 ========================
+def get_llm(model=None, temp=0):
+    return ChatAnthropic(model=(model or get_model()), temperature=temp)
+
+def extract_text(content):
+    if isinstance(content, str): return content
+    texts = [b.get("text","") for b in (content if isinstance(content,list) else [])
+             if isinstance(b,dict) and b.get("type")=="text"]
+    return "\n".join(texts) if texts else str(content)
+
+def read_file_or_arg(arg):
+    p = Path(arg)
+    return p.read_text().strip() if p.exists() and p.is_file() else arg
+
+def make_json(data): return json.dumps(data, ensure_ascii=False, indent=2)
+
+def heading(text): return f"\n{'='*60}\n{text}\n{'='*60}"
+
+def git(*args):
+    try:
+        return subprocess.run(["git"]+list(args), capture_output=True, text=True, timeout=30).stdout.strip()
+    except: return ""
+
+def code_blocks(text):
+    return re.findall(r"```(?:\w+)?\n(.*?)```", text, re.DOTALL)
+
+# ======================== 命令 ========================
+@app.command()
+def ask(question: str = typer.Argument(...),
+        model: str = typer.Option(get_model(), "--model","-m"),
+        json_output: bool = typer.Option(False, "--json")):
+    r = get_llm(model).invoke(question)
+    text = extract_text(r.content)
+    typer.echo(make_json({"q":question,"a":text}) if json_output else text)
+
+@app.command()
+def review(code: str = typer.Argument(...),
+           output: Optional[str] = typer.Option(None,"-o"),
+           json_output: bool = typer.Option(False, "--json")):
+    code = read_file_or_arg(code); llm = get_llm()
+    class S(TypedDict): code:str; security:str; quality:str; report:str
+    def sec(s): return {"security":extract_text(llm.invoke(f"安全审查：\n```\n{s['code']}\n```").content)}
+    def qual(s): return {"quality":extract_text(llm.invoke(f"质量审查：\n```\n{s['code']}\n```").content)}
+    def syn(s): return {"report":extract_text(llm.invoke(f"综合P0/P1/P2：\n安全:{s['security']}\n质量:{s['quality']}").content)}
+    g = StateGraph(S); g.add_node("s",sec); g.add_node("q",qual); g.add_node("y",syn)
+    g.add_edge(START,"s"); g.add_edge(START,"q"); g.add_edge("s","y"); g.add_edge("q","y"); g.add_edge("y",END)
+    r = g.compile().invoke({"code":code})
+    if json_output: typer.echo(make_json(r))
+    elif output: Path(output).write_text(r["report"]); typer.echo(f"→ {output}")
+    else:
+        for k in ["security","quality","report"]: typer.echo(heading(k)+"\n"+r.get(k,""))
+
+@app.command()
+def test(code: str = typer.Argument(...),
+         framework: str = typer.Option("pytest","--framework","-f"),
+         output: Optional[str] = typer.Option(None,"-o"),
+         json_output: bool = typer.Option(False, "--json")):
+    code = read_file_or_arg(code); llm = get_llm()
+    plan = extract_text(llm.invoke(f"列出需测试的函数：\n```\n{code}\n```").content)
+    tests = extract_text(llm.invoke(f"用{framework}写测试：\n代码:\n```\n{code}\n```\n计划:\n{plan}").content)
+    if json_output: typer.echo(make_json({"plan":plan,"tests":tests}))
+    elif output:
+        b = code_blocks(tests); Path(output).write_text("\n\n".join(b) if b else tests)
+        typer.echo(f"→ {output}")
+    else: typer.echo(tests)
+
+@app.command()
+def doc(code: str = typer.Argument(...), style: str = typer.Option("google","-s"),
+        output: Optional[str] = typer.Option(None,"-o"), json_output: bool = typer.Option(False,"--json")):
+    code = read_file_or_arg(code)
+    text = extract_text(get_llm().invoke(f"用{style}风格写文档：\n```\n{code}\n```").content)
+    if json_output: typer.echo(make_json({"docs":text}))
+    elif output: Path(output).write_text(text); typer.echo(f"→ {output}")
+    else: typer.echo(text)
+
+@app.command()
+def refactor(code: str = typer.Argument(...),
+             pattern: Optional[str] = typer.Option(None,"--pattern","-p"),
+             output: Optional[str] = typer.Option(None,"-o"),
+             json_output: bool = typer.Option(False,"--json")):
+    code = read_file_or_arg(code)
+    p = f"分析重构建议：\n```\n{code}\n```"
+    if pattern: p += f"\n模式：{pattern}"
+    text = extract_text(get_llm().invoke(p).content)
+    if json_output: typer.echo(make_json({"suggestions":text}))
+    elif output: Path(output).write_text(text); typer.echo(f"→ {output}")
+    else: typer.echo(text)
+
+@app.command()
+def pr(base: str = typer.Option("main","--base","-b"),
+       output: Optional[str] = typer.Option(None,"-o"),
+       json_output: bool = typer.Option(False,"--json")):
+    diff = git("diff",f"{base}...HEAD"); log = git("log",f"{base}...HEAD","--oneline")
+    branch = git("rev-parse","--abbrev-ref","HEAD")
+    if not diff: typer.echo("diff 为空",err=True); raise typer.Exit(1)
+    text = extract_text(get_llm().invoke(
+        f"生成PR描述：\n分支:{branch}\n提交:\n{log}\n变更:\n{diff[:6000]}").content)
+    if json_output: typer.echo(make_json({"pr":text}))
+    elif output: Path(output).write_text(text); typer.echo(f"→ {output}")
+    else: typer.echo(text)
+
+@app.command()
+def analyze(path: str = typer.Argument("."), depth: int = typer.Option(3,"-d"),
+            json_output: bool = typer.Option(False,"--json")):
+    root = Path(path).resolve()
+    exts = {".py",".js",".ts",".jsx",".tsx",".go",".rs",".sh",".yaml",".sql"}
+    files = []
+    for p in root.rglob("*"):
+        if p.is_file() and p.suffix in exts:
+            rel = p.relative_to(root)
+            if not any(x in rel.parts for x in [".git","node_modules","__pycache__",".venv"]):
+                try: files.append(str(rel))
+                except: pass
+    if not files: typer.echo("无源文件",err=True); raise typer.Exit(1)
+    s = f"项目:{root.name}\n文件:{len(files)}\n"+"\n".join(f"  {f}" for f in files[:60])
+    arch = extract_text(get_llm().invoke(f"分析项目架构：\n{s}").content)
+    if json_output: typer.echo(make_json({"project":root.name,"files":len(files),"arch":arch}))
+    else: typer.echo(heading(f"分析: {root.name}")+f"\n{len(files)}文件\n"+arch)
+
+# ======================== GitNexus ========================
+GNX_PATH = None
+def _gnx():
+    global GNX_PATH
+    if GNX_PATH is not None: return GNX_PATH or None
+    for d in os.environ.get("PATH","").split(":"):
+        c = Path(d)/"gitnexus"
+        if c.exists(): GNX_PATH=str(c); return str(c)
+    for nd in (Path.home()/".nvm/versions/node").glob("*/bin/gitnexus"):
+        GNX_PATH=str(nd); return str(nd)
+    GNX_PATH=""; return None
+def gnx_ok(): return bool(_gnx())
+def gnx_call(args, cwd=None):
+    e = _gnx()
+    if not e: return {"error":"gitnexus not found"}
+    try:
+        r = subprocess.run([e]+args, capture_output=True, text=True, timeout=60, cwd=cwd)
+        if r.returncode: return {"error":r.stderr.strip()}
+        js=r.stdout.find("{"); return json.loads(r.stdout[js:]) if js>=0 else {"output":r.stdout.strip()}
+    except json.JSONDecodeError: return {"error":"JSON parse"}
+    except subprocess.TimeoutExpired: return {"error":"timeout"}
+    except Exception as x: return {"error":str(x)}
+def gnx_repo(cwd=None):
+    return git("rev-parse","--show-toplevel") or (cwd or os.getcwd())
+
+@app.command()
+def context(symbol: str = typer.Argument(...),
+            repo: Optional[str] = typer.Option(None,"--repo","-r"),
+            json_output: bool = typer.Option(False,"--json")):
+    if not gnx_ok(): typer.echo("GitNexus 未安装",err=True); raise typer.Exit(1)
+    r = json.loads(gnx_call(["context",symbol], repo or gnx_repo()).get("output","{}")) \
+        if "error" not in (d:=gnx_call(["context",symbol], (repo or gnx_repo()))) else d
+    if json_output or "error" in r: typer.echo(make_json(r) if not isinstance(r,str) else r)
+    else:
+        sym = r.get("symbol",{})
+        typer.echo(heading(f"符号: {symbol}")+f"\n类型:{sym.get('kind','?')} | 文件:{sym.get('filePath','?')} | 行:{sym.get('startLine','?')}")
+        for k,v in r.get("incoming",{}).items():
+            if v: typer.echo(f"\n引用者:")
+            for i in v[:8]: typer.echo(f"  {i.get('filePath',i.get('name',str(i)))}")
+        for k,v in r.get("outgoing",{}).items():
+            if v: typer.echo(f"\n关联({k}):")
+            for i in v[:8]: typer.echo(f"  {i.get('name',str(i))}")
+
+@app.command()
+def impact(symbol: str = typer.Argument(...),
+           repo: Optional[str] = typer.Option(None,"--repo","-r"),
+           json_output: bool = typer.Option(False,"--json")):
+    if not gnx_ok(): typer.echo("GitNexus 未安装",err=True); raise typer.Exit(1)
+    r = gnx_call(["impact",symbol], (repo or gnx_repo()))
+    if json_output or "error" in r: typer.echo(make_json(r) if isinstance(r,dict) else r)
+    else:
+        tgt = r.get("target",{}); typer.echo(heading(f"影响范围: {symbol}"))
+        typer.echo(f"类型:{tgt.get('type','?')} | 风险:{r.get('risk','?')}")
+        typer.echo(f"直接影响:{r.get('summary',{}).get('direct',0)}处")
+        for d,items in r.get("byDepth",{}).items():
+            typer.echo(f"\n深度{d}:")
+            for i in items[:10]: typer.echo(f"  [{i.get('relationType','')}] {i.get('filePath',i.get('name',''))}")
+
+# ======================== YAML 引擎 ========================
+def render(tpl, ctx):
+    def rep(m):
+        k=m.group(1).strip().split("."); v=ctx
+        for kk in k: v=v.get(kk,"") if isinstance(v,dict) else str(v)
+        return str(v) if v is not None else ""
+    return re.sub(r"\{\{(.*?)\}\}", rep, tpl)
+
+def flatten(agents):
+    f=[]
+    for a in agents:
+        if "parallel" in a and a["parallel"]:
+            f.append(a)
+            for s in a["parallel"]: s.update(_parent=a["name"],_group=a["name"]); f.append(s)
+        else: f.append(a)
+    return f
+
+@app.command()
+def run(workflow_file: str = typer.Argument(...),
+        input_param: Optional[List[str]] = typer.Option(None,"--input","-i"),
+        json_output: bool = typer.Option(False,"--json"),
+        dry_run: bool = typer.Option(False,"--dry-run")):
+    import yaml
+    wf = yaml.safe_load(Path(workflow_file).read_text(encoding="utf-8"))
+    if not wf or "workflow" not in wf: typer.echo("缺少 workflow",err=True); raise typer.Exit(1)
+    wf = wf["workflow"]
+    wname, entry, adef = wf.get("name","?"), wf.get("entry",""), wf.get("agents",[])
+    inp = {}
+    if input_param:
+        for p in input_param:
+            if "=" in p: k,v=p.split("=",1); inp[k]=v
+    flat = flatten(adef)
+    if dry_run:
+        typer.echo(heading(f"工作流: {wname}"))
+        for a in flat:
+            pg = a.get("_group",""); pfx = f"  [并行:{pg}] " if pg else "  "
+            rs = a.get("routes",[])
+            typer.echo(f"{pfx}{a['name']} → {', '.join(r.get('to','?') for r in rs) if rs else '$end'}")
+        return
+    sf = {"_in":dict}
+    for a in flat: sf[a["name"]]=str
+    ST = TypedDict("W", sf)
+    g = StateGraph(ST)
+    def make_agent(nm,cfg):
+        def fn(state):
+            llm = get_llm(cfg.get("model",DEFAULT_MODEL))
+            p = render(cfg["prompt"],{**state,"input":state["_in"]})
+            typer.echo(f"  ▶ {nm}")
+            r = llm.invoke(p)
+            typer.echo(f"  ✓ {nm}")
+            return {nm: extract_text(r.content)}
+        return fn
+    for a in flat: g.add_node(a["name"],make_agent(a["name"],a))
+    g.set_entry_point(entry)
+    for a in flat:
+        rs = a.get("routes",[]); pg = a.get("_group")
+        if not rs and not pg: g.add_edge(a["name"],END)
+        elif pg:
+            pdef = next((x for x in adef if x["name"]==a["_parent"]),{})
+            for r in (pdef.get("routes",[{"to":END}])):
+                t = r.get("to",END); g.add_edge(a["name"],END if t in ("$end","$human") else t)
+        elif "parallel" in a:
+            for s in a["parallel"]: g.add_edge(a["name"],s["name"])
+        else:
+            for r in rs:
+                t = r.get("to",END)
+                if t in ("$end","$human"):
+                    if t=="$human": typer.echo(f"  ⏸ [{a['name']}] 人工(跳过)")
+                    t = END
+                g.add_edge(a["name"],t)
+    try:
+        c = g.compile()
+        init = {"_in":inp}
+        for a in flat: init[a["name"]]=""
+        typer.echo(heading(f"▶ 工作流: {wname}"))
+        result = c.invoke(init)
+    except Exception as e:
+        typer.echo(f"工作流失败: {e}",err=True); raise typer.Exit(1)
+    if json_output:
+        od = {"workflow":wname,"inputs":inp,"results":{}}
+        for a in flat:
+            if result.get(a["name"],""): od["results"][a["name"]]=str(result[a["name"]])[:2000]
+        typer.echo(make_json(od))
+    else:
+        typer.echo(heading(f"✅ 完成: {wname}"))
+        for a in flat:
+            if result.get(a["name"],""):
+                pg = a.get("_group",""); tag = f" [并行:{pg}]" if pg else ""
+                typer.echo(heading(f"[{a['name']}]{tag}")); typer.echo(str(result[a["name"]])[:1500])
+
+# ======================== 记忆 ========================
+def mem_dir(cwd=None):
+    for p in [Path(cwd or os.getcwd())] + list(Path(cwd or os.getcwd()).parents):
+        d = p/".langgraph"
+        if d.is_dir(): return d/"memory"
+    return Path(cwd or os.getcwd())/".langgraph"/"memory"
+
+@app.command()
+def remember(content: str = typer.Argument(...),
+             tags: Optional[str] = typer.Option(None,"--tag","-t")):
+    md = mem_dir(); md.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tl = [t.strip() for t in tags.split(",")] if tags else []
+    fn = f"{ts}_{content[:60].replace(' ','_').replace('/','_')}.md"
+    (md/fn).write_text(f"# {content}\n\n时间: {datetime.now().isoformat()}\n标签: {', '.join(tl) if tl else '无'}\n\n{content}\n")
+    typer.echo(f"✅ 已记: {content[:80]}")
+
+@app.command()
+def recall(query: str = typer.Argument(...)):
+    md = mem_dir()
+    if not md.is_dir(): typer.echo("暂无记忆"); return
+    rs = []
+    for f in sorted(md.glob("*.md"), reverse=True):
+        t = f.read_text(encoding="utf-8")
+        if query.lower() in t.lower():
+            ls = t.strip().split("\n"); title = ls[0].lstrip("# ").strip() if ls else ""
+            cd = [l for l in ls if l.startswith("时间:")]; tg = [l for l in ls if l.startswith("标签:")]
+            rs.append({"title":title,"time":cd[0] if cd else "","tags":tg[0] if tg else ""})
+    if not rs: typer.echo(f"未找到「{query}」"); return
+    typer.echo(f"找到 {len(rs)} 条:\n")
+    for r in rs:
+        typer.echo(f"  📌 {r['title']}")
+        if r['tags']: typer.echo(f"     {r['tags']}")
+        typer.echo(f"     {r['time']}\n")
+
+# ======================== config ========================
+@app.command()
+def config(key: str = typer.Argument(None), value: str = typer.Argument(None),
+           show: bool = typer.Option(False,"--show","-s")):
+    cp = Path(".langgraph/config.json")
+    if show or (key is None and value is None):
+        typer.echo(cp.read_text(encoding="utf-8") if cp.exists() else "无 .langgraph/config.json")
+        return
+    cfg = json.loads(cp.read_text(encoding="utf-8")) if cp.exists() else {"model":"deepseek-v4-pro","provider":"claude"}
+    if key and value:
+        for t in [lambda v: True if v.lower()=="true" else None, lambda v: False if v.lower()=="false" else None, int, str]:
+            try:
+                cfg[key]=t(value)
+                if cfg[key] is not None: break
+            except: pass
+        cp.write_text(json.dumps(cfg,indent=2,ensure_ascii=False)+"\n"); typer.echo(f"✅ {key}={cfg[key]}")
+    elif key: typer.echo(json.dumps(cfg.get(key,"未设置"),ensure_ascii=False))
+
+# ======================== init ========================
+@app.command()
+def init(directory: str = typer.Option(".","--dir","-d"),
+         deep: bool = typer.Option(False,"--deep")):
+    target = Path(directory).resolve()
+    wf_dir = target/".langgraph"/"workflows"; wf_dir.mkdir(parents=True, exist_ok=True)
+
+    (wf_dir/"code-review.yaml").write_text("""\
+workflow:
+  name: code-review
+  entry: start
+  agents:
+    - name: start
+      prompt: "分析代码结构：\\n```\\\\n{{ input.code }}\\\\n```"
+      parallel:
+        - name: security_review
+          prompt: "审查安全漏洞：\\n```\\\\n{{ input.code }}\\\\n```"
+        - name: quality_review
+          prompt: "审查代码质量：\\n```\\\\n{{ input.code }}\\\\n```"
+      routes:
+        - to: synthesize
+    - name: synthesize
+      prompt: "综合审查P0/P1/P2：\\n安全:{{ security_review }}\\n质量:{{ quality_review }}"
+      routes:
+        - to: $end
+""")
+
+    (wf_dir/"fix-bug.yaml").write_text("""\
+workflow:
+  name: fix-bug
+  entry: analyze_bug
+  agents:
+    - name: analyze_bug
+      prompt: "分析bug，定位根因：\\n{{ input.description }}"
+      routes:
+        - to: propose_fix
+    - name: propose_fix
+      prompt: "提出修复方案（含代码）：\\n{{ analyze_bug }}"
+      routes:
+        - to: review_fix
+    - name: review_fix
+      prompt: "审查修复正确性和副作用：\\n{{ propose_fix }}"
+      routes:
+        - to: $end
+""")
+
+    (wf_dir/"add-feature.yaml").write_text("""\
+workflow:
+  name: add-feature
+  entry: design
+  agents:
+    - name: design
+      prompt: "设计功能实现方案：\\n{{ input.feature }}"
+      routes:
+        - to: implement
+    - name: implement
+      prompt: "基于设计实现代码：\\n{{ design }}"
+      routes:
+        - to: test_generation
+    - name: test_generation
+      prompt: "为以下实现编写测试：\\n{{ implement }}"
+      routes:
+        - to: $end
+""")
+
+    # config
+    cp = target/".langgraph"/"config.json"
+    if not cp.exists():
+        cp.write_text(json.dumps({"model":"deepseek-v4-pro","provider":"claude",
+            "remember_before_run":True,"gitnexus_enabled":True},indent=2,ensure_ascii=False)+"\n")
+
+    # CLAUDE.md
+    (target/".langgraph"/"CLAUDE.md").write_text("""\
+# LangGraph 项目工作流
+
+langgraph-cli 全局安装。本目录含工作流(.langgraph/workflows/)和长期记忆(.langgraph/memory/)。
+
+══════════════════════════════
+会话启动协议（新窗口/新会话必执行）
+══════════════════════════════
+
+**每次新会话开始时，自动执行以下步骤：**
+
+1. `langgraph-cli recall "<本次任务关键词>"` — 恢复相关的项目决策和约定
+2. 读取 `.langgraph/CLAUDE.md` — 确认当前规则
+3. 如果存在 `.langgraph/memory/` 中最近 7 天的记忆 → 摘要给用户确认
+4. 如果本目录有 CLAUDE.md 或 AGENTS.md → 读入上下文
+5. 如果用户提供了 handoff 文件路径 → 读入上次会话状态
+
+**此步骤不可跳过。** 只有完成以上检查后，才能进入正常的工作流程。
+
+══════════════════════════════
+规则自管理（AI 必读）
+══════════════════════════════
+
+收到"加规则"、"记决策"等指令，自动判断类型写入：
+- 项目通用规则 → .langgraph/CLAUDE.md
+- 编码规范 → src/CLAUDE.md
+- 测试纪律 → tests/CLAUDE.md
+- 可执行工作流 → .langgraph/workflows/ 新建YAML
+- 一次性决策 → `langgraph-cli remember "内容" -t "标签"`
+
+每次任务前：`langgraph-cli recall "<关键词>"`
+
+══════════════════════════════
+方法论选择
+══════════════════════════════
+
+| 任务 | 方法论 |
+|------|--------|
+| 新功能 | SDD（grill-with-docs → to-prd → 编码）|
+| 复杂业务 | DDD（zoom-out → 领域建模 → 架构 → 编码）|
+| 所有实现 | TDD（tdd → 测试 → 实现）|
+| Bug | diagnose → 重现 → 最小修复 → 回归测试 |
+| 原型 | prototype → caveman 极简验证 |
+
+编码前强制检查：已查GitNexus？完成grill-with-docs？评估过度工程？
+
+══════════════════════════════
+两阶段执行协议
+══════════════════════════════
+
+【阶段1】理解 — grill-with-docs 优先
+- 编码前必须通过grill-with-docs完成需求对齐
+- 此阶段ultrawork"不问"规则暂停
+- 查GitNexus确认无已有代码
+
+【阶段2】执行 — ultrawork 接管
+- grill-with-docs完成（文档已更新）后开始
+- ultrawork纪律：不降级、不停止、强制验证
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+一、langgraph-cli 命令速查
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- review <代码> — 并行审查
+- test <代码> -o 输出 — 生成测试
+- refactor <代码> — 重构建议
+- analyze . — 项目分析
+- context <符号> — GitNexus上下文
+- impact <符号> — 影响范围
+- pr — PR描述
+- run workflow.yaml -i — 工作流
+- remember "内容" -t "标签" — 记忆
+- recall "关键词" — 搜索
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+二、标准工程工作流
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. GitNexus图谱对齐
+2. 结构化计划，等待确认
+3. 确认后开始编码
+4. 技能驱动执行
+5. TDD：测试→失败→实现→通过
+6. 增量提交
+7. GitNexus重索引
+
+对应skill（按阶段）：
+
+【理解】grill-with-docs / zoom-out
+【计划】to-prd / langgraph-cli analyze
+【编码】tdd / prototype / caveman
+【审查】langgraph-cli review / oh-my-claude code-reviewer/validator / langgraph-cli impact
+【Bug】diagnose / triage
+【上下文】langgraph-cli remember-rec / handoff / GitNexus
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+三、最高优先级：优先使用已有代码
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+新增代码前，用GitNexus确认无已有能力可复用。找到→优先连线/配置/测试。无→实现新代码。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+四、最小变更原则
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+声明假设，歧义停。评估过度工程。最小变更。手术式修改。每行追溯至需求。bug默认本地修复+回归。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+五、编码规范 / Agent约束
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Python: 4空格,snake_case,PascalCase。格式化。不提交凭据。
+未经批准不修改源码。不主动重构。不破坏性命令。不暴露密钥。
+""")
+
+    if deep:
+        (target/"src").mkdir(exist_ok=True); (target/"tests").mkdir(exist_ok=True)
+        (target/"src"/"CLAUDE.md").write_text("# 编码规则 (src/)\n\n- 类型注解、文档\n- TDD先测试\n- 改前查GitNexus\n- 手术式修改\n")
+        (target/"tests"/"CLAUDE.md").write_text("# 测试规则 (tests/)\n\n- TDD: 失败→实现→通过\n- 覆盖正常/边界/错误\n- test_<功能>_<场景>\n")
+        typer.echo("  ├── src/CLAUDE.md + tests/CLAUDE.md")
+
+    typer.echo(f"✅ 已初始化到 {wf_dir}/")
+    typer.echo("  ├── code-review.yaml / fix-bug.yaml / add-feature.yaml / CLAUDE.md")
+
+if __name__ == "__main__":
+    app()

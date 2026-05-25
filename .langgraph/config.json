@@ -1,0 +1,6 @@
+{
+  "model": "deepseek-v4-pro",
+  "provider": "claude",
+  "remember_before_run": true,
+  "gitnexus_enabled": true
+}
