@@ -43,8 +43,24 @@ fi
 
 # ====== 5. Matt Pocock skills ======
 echo "→ Matt Pocock skills..."
-npx --yes skills add mattpocock/skills 2>/dev/null || \
-    echo "  ⚠ 手动: npx skills add mattpocock/skills"
+SKILLS_DIR="$(pwd)/.agents/skills"
+if [ -d "$SKILLS_DIR/grill-with-docs" ] && [ -d "$SKILLS_DIR/diagnose" ]; then
+    echo "  (已安装到项目)"
+else
+    npx --yes skills add mattpocock/skills 2>/dev/null || \
+        echo "  ⚠ 手动: npx skills add mattpocock/skills"
+fi
+# Copy to global so all langgraph-cli init projects can use them
+if [ -d "$SKILLS_DIR" ]; then
+    mkdir -p "$HOME/.claude/skills"
+    for skill_dir in "$SKILLS_DIR"/*/; do
+        skill_name=$(basename "$skill_dir")
+        if [ ! -e "$HOME/.claude/skills/$skill_name" ]; then
+            cp -r "$skill_dir" "$HOME/.claude/skills/$skill_name" 2>/dev/null || true
+        fi
+    done
+    echo "  (已同步到全局 ~/.claude/skills/)"
+fi
 
 # ====== 6. oh-my-claude ======
 echo "→ oh-my-claude..."
