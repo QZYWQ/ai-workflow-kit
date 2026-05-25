@@ -10,6 +10,7 @@
 2. 检查 `~/.claude/settings.json` 中的 `ANTHROPIC_BASE_URL` 和 `ANTHROPIC_AUTH_TOKEN`
 3. 如果 oh-my-claude 未安装：引导用户运行 `/plugin marketplace add oh-my-claude && /plugin install oh-my-claude@oh-my-claude`
 4. 完成后回复："工作流就绪。在项目中使用：`langgraph-cli init --deep`"
+5. **提醒用户**：init 完成后，自动检测有边界——领域规则、API 注意事项、项目专属 workflow 需手动补齐（见 README "初始化后检查"）
 
 ## 项目工作流
 
