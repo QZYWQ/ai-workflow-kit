@@ -16,11 +16,25 @@
 
 | 组件 | 来源 | 作用 |
 |------|------|------|
-| langgraph-cli | Python 脚本 | 审查/测试/记忆/YAML 工作流（14 命令）|
+| langgraph-cli | Python 脚本 | 审查/测试/YAML 工作流（14 命令）|
+| **OMEGA** | pip | **自动长期记忆**（Semantic Search + Consolidate + SessionStart 注入）|
 | GitNexus | npm | 代码知识图谱（context/impact）|
 | Matt Pocock skills | skills marketplace | grill-with-docs/tdd/diagnose 等 14 个方法论 skill |
 | oh-my-claude | plugin marketplace | 编排纪律、validator/critic/code-reviewer agent |
 | langgraph-cli skill | 本地注册 | Claude Code 识别 langgraph-cli 命令 |
+
+## 记忆系统分层（防 token 爆炸）
+
+```
+OMEGA (auto) — 自动捕获教训/决策，语义搜索，定期 consolidate 清理过期记忆
+  ↓ 互补
+langgraph-cli remember (manual) — 用户明确说"记住这个"时使用
+  ↓ 互补  
+handoff (session) — "下次继续这个任务"的上下文快照
+```
+
+三套记忆互不冲突。OMEGA 自带的 consolidate/compact 防止 token 累积。
+SessionStart 时 OMEGA 自动注入近期相关记忆，不需要手动 recall。
 
 ## 纯净 Claude Code 没有、这套补齐的全部东西
 

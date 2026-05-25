@@ -25,12 +25,28 @@ else
         echo "  ⚠ 需要 Node.js: npm install -g gitnexus"
 fi
 
-# ====== 4. Matt Pocock skills ======
+# ====== 4. OMEGA 记忆系统 ======
+echo "→ OMEGA..."
+if python3 -c "import omega" 2>/dev/null; then
+    echo "  (已安装)"
+else
+    python3 -m pip install "omega-memory[server]" -q 2>/dev/null || \
+        echo "  ⚠ 手动: pip install omega-memory[server]"
+fi
+if [ -d "$HOME/.omega" ]; then
+    echo "  (已配置)"
+else
+    ~/.venv/langgraph/bin/omega setup --client claude-code 2>/dev/null || \
+        ~/.local/bin/omega setup --client claude-code 2>/dev/null || \
+        echo "  ⚠ 手动: omega setup --client claude-code"
+fi
+
+# ====== 5. Matt Pocock skills ======
 echo "→ Matt Pocock skills..."
 npx --yes skills add mattpocock/skills 2>/dev/null || \
     echo "  ⚠ 手动: npx skills add mattpocock/skills"
 
-# ====== 5. oh-my-claude ======
+# ====== 6. oh-my-claude ======
 echo "→ oh-my-claude..."
 if [ -d "$HOME/.claude/plugins/cache/oh-my-claude" ]; then
     echo "  (已安装)"
@@ -39,12 +55,12 @@ else
     echo "  然后: /plugin install oh-my-claude@oh-my-claude"
 fi
 
-# ====== 6. Skill 注册 ======
+# ====== 7. Skill 注册 ======
 echo "→ langgraph-cli skill..."
 mkdir -p "$HOME/.claude/skills/langgraph-cli"
 cp "$SCRIPT_DIR/skills/langgraph-cli/SKILL.md" "$HOME/.claude/skills/langgraph-cli/SKILL.md"
 
-# ====== 7. PATH ======
+# ====== 8. PATH ======
 grep -q '.local/bin' "$HOME/.zshrc" 2>/dev/null || \
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
 
