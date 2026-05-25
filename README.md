@@ -24,7 +24,8 @@ langgraph-cli remember "项目定位" -t "概况"
 
 ## 包含
 
-- **langgraph-cli** — 14 命令的 CLI（审查/测试/记忆/工作流）
+- **langgraph-cli** — 14 命令的 CLI（审查/测试/工作流）
+- **OMEGA** — 自动长期记忆（Semantic Search + Consolidate + SessionStart 注入）
 - **GitNexus** — 代码知识图谱
 - **Matt Pocock skills** — 14 个方法论 skill（grill-with-docs/tdd/diagnose 等）
 - **两阶段执行协议** — 理解→执行
