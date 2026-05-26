@@ -1,8 +1,10 @@
 # Task Router — 通用任务路由 + 全工具库
 spec:
   name: task-router
-  version: "2.2"
+  version: "2.4"
   entry: assess
+  notes: |
+    v2.4: +error_levels(exp/rate/sys) +skill_composition(domain skill 并行) +multi_step_flow(子任务切换不重置)
 
 # ═══════════════════════════════════════════
 # 项目上下文评估（classify 前执行）
@@ -34,6 +36,17 @@ context_assessment:
         当前在 execute/verify 中, 用户请求不匹配当前步骤:
         → 暂停, "检测到任务切换。当前[路径X|状态Y]未完成。新任务重新 assess+classify?"
         → 用户确认后 → 返回 assess, 已完成的步骤保留在上下文
+
+  # v2.4: 子任务路径切换——自然多阶段流程（设计→执行→验证）不重跑 assess
+  sub_task_flow: |
+    每阶段直接声明: "[→ 路径 X] 理由: ≤1行", 加载对应 spec 从起始状态开始。
+    assess 不重跑（除非子任务改变了可检测的项目状态）。
+
+  # v2.4: 技能叠加——路径 spec（流程）+ 领域 skill（约束）并行
+  skill_stack: |
+    路径 spec: 何时做、工具分配、产出路由。
+    领域 skill: 什么是正确的、hard rules、stop conditions。
+    冲突: 领域 hard rule 优先于执行流程的"继续"。
 
 # ═══════════════════════════════════════════
 # 工具库
@@ -352,3 +365,19 @@ states:
       - "langgraph-cli remember — 用户明确'记住这个'的"
       - "输出: 变更文件 + 验证结果 + 后续建议"
     output: "## 完成摘要\n- 任务: ...\n- 产出: ...\n- 决策: ..."
+
+# ═══════════════════════════════════════════
+# v2.4: 跨路径通用模式
+# ═══════════════════════════════════════════
+
+# ── 错误分级（所有路径共享）──
+error_levels:
+  exp:  # 预期内失败——已知特定条件会触发
+    desc: "已知会发生的失败"
+    behavior: "记录 → 跳过 → 继续 → [EXP] marker"
+  rate:  # 临时限流
+    desc: "临时限流——可恢复"
+    behavior: "等待 → 重试 ≤3 → 仍失败则 [RATE] 记录+跳过"
+  sys:  # 系统意外
+    desc: "意外错误——SSL / parse / auth"
+    behavior: "暂停 → 汇报 → [SYS] marker → 等用户"

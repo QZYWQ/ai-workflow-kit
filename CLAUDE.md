@@ -1,4 +1,4 @@
-# AI Workflow Kit v2
+# AI Workflow Kit v2.4
 
 面向 Claude Code 的通用 AI 辅助开发工作流套件。基于 **spec 状态机 + Skill 运行时**。
 

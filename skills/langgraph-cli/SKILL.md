@@ -16,7 +16,7 @@ allowed-tools:
 ## 激活时自动执行
 
 1. 读取 `.langgraph/specs/task-router.yaml` — 通用路由 spec
-2. 设置当前状态为 `assess`（**v2.3: 每任务 assess + task-switch 检测 + mode refresh**）
+2. 设置当前状态为 `assess`（**v2.4: +preflight 探索状态 + 错误分级 + 技能叠加**）
 3. 注入以下状态约束（**最高优先级**）
 
 ---
@@ -77,11 +77,26 @@ allowed-tools:
 | 从 | 到 | 条件 |
 |----|-----|------|
 | classify | plan | 已输出"路径 X" |
+| plan | preflight | 路径 C 且需要探索性 API 验证（字段可用性/覆盖率检查） |
+| preflight | plan | 收集到足够信息（preflight 的 exit_when） |
 | plan | execute | 路径 A 或无 spec 时跳过；否则已对齐相应路径 spec |
-| execute | verify | 所有步骤标有 [✓] |
+| execute | analyze | 结果需诊断优化（v2.4: iterate 循环） |
+| analyze | execute | ≤3 轮迭代 AND 有定向修复策略 |
+| execute | verify | 所有步骤标有 [✓] 且不需迭代 |
 | verify | done | 验证通过 |
 
 **状态中的 forbid 列表优先于用户请求。违反时回复: "当前在状态 [X]，该操作禁止。先完成 [门]。"**
+
+### v2.4: 错误分级
+
+遇到错误时按级别处理，不全部暂停:
+- **exp** (预期失败): 记录 → 跳过 → 继续 → `[EXP]`
+- **rate** (临时限流): 等待 → 重试 ≤3 → 仍失败则记录+跳过 → `[RATE]`
+- **sys** (系统意外): 暂停 → 汇报 → 等用户 → `[SYS]`
+
+### v2.4: 技能叠加
+
+路径 spec 控制流程（何时做），领域 skill 控制约束（什么是正确的），同时加载不互斥。冲突时领域 hard rule 优先。`[SKILL STOP]` marker 记下原因。
 
 ---
 
