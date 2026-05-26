@@ -14,6 +14,16 @@ states:
       - skill: "grill-with-docs"
         provides: [需求对齐, 术语收敛, CONTEXT.md/ADR 更新]
         mode: "对话引擎——追问每个未解决分支"
+        protocol: |
+          grill-with-docs 协议:
+            1. 检查 CONTEXT.md: 术语是否有冲突？新术语需要定义？
+            2. 检查 docs/adr/: 设计决策是否与已有 ADR 矛盾？
+            3. 逐题追问: 每次一个问题，等待反馈，提供推荐答案
+            4. 场景压力测试: 用边界 case 验证设计精度
+            5. 代码交叉验证: "你说 X，但代码里是 Y——哪个对？"
+            6. Inline 写入: 术语确定 → 即时更新 CONTEXT.md（不批量）
+            7. ADR 写入: 仅满足 3 条件时（难逆/无上下文会困惑/真实 tradeoff）
+        exit_when: "所有分支解决 AND 术语收敛 AND 无代码/文档矛盾"
       - "gitnexus context <核心符号>"
         provides: [已有实现检查, 调用关系]
         when: "项目有 GitNexus"

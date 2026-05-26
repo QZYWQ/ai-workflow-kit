@@ -61,6 +61,31 @@ allowed-tools:
 | execute | tdd, diagnose | review, test, impact |
 | verify | verify | detect_changes, pr |
 
+### grill-with-docs 详细调用规则
+
+**触发判定**（满足任一即触发）:
+- 跨文件修改（≥3 文件）
+- 项目含 CONTEXT.md 或 docs/adr/
+- 用户术语模糊/过载（"重构"、"优化"、"搞一下"）
+- 涉及新概念、新数据流、新模块
+
+**可跳过的条件**（全部满足才跳过）:
+- 单文件修改 + 用户指令精确 + 无文档冲突可能
+
+**执行协议**:
+- 逐题追问，每次一个问题，等待反馈
+- 每个问题提供推荐答案
+- 能探索代码库回答的问题不提问
+- 不批量提问——grill 是对话引擎，不是问卷
+
+**grill-with-docs vs grill-me**:
+| | grill-with-docs | grill-me |
+|---|---|---|
+| 文档检查 | ✅ 交叉验证 CONTEXT.md + ADR | ❌ |
+| 写入 | ✅ Inline 更新文档 | ❌ |
+| 场景 | 编码前设计对齐 | 纯策略逻辑 stress-test |
+| 触发 | 路径 D/F plan 状态 | 用户明确"grill me" |
+
 ---
 
 ## 每次回复末尾注入
