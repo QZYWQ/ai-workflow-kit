@@ -4,7 +4,9 @@
 
 ---
 
-## 收到任务后第一个动作：分类（不是执行）
+## 收到任务后第一个动作：评估项目上下文 → 分类（不是执行）
+
+**v2.2: 先判断项目状态（assess），再分类（classify）。四模式: greenfield / brownfield_docs / brownfield_nodocs / midstream。**
 
 匹配关键词 → 走对应路径。**路径 B-F 禁止跳过此步骤直接 Bash/Python/API。**
 

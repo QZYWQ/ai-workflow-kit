@@ -1,11 +1,29 @@
 # Task Router — 通用任务路由 + 全工具库
 spec:
   name: task-router
-  version: "2.1"
-  entry: classify
+  version: "2.2"
+  entry: assess
 
 # ═══════════════════════════════════════════
-# 工具库：每个工具的 trigger / protocol / exit / deconflict / skip
+# 项目上下文评估（classify 前执行）
+# ═══════════════════════════════════════════
+context_assessment:
+  modes:
+    greenfield:       # 从零开发——无 CONTEXT.md, 无代码, 无 ADR
+      detect: "!CONTEXT.md && !docs/adr/ && 项目文件 < 10"
+      behavior: "grill-with-docs 强制触发(建立术语表). 路径 D: 先 create CONTEXT.md"
+    brownfield_docs:   # 已有文档的成熟项目
+      detect: "CONTEXT.md || docs/adr/"
+      behavior: "grill-with-docs 检查对齐. 所有路径: 先读 CONTEXT.md 再 plan"
+    brownfield_nodocs: # 有代码无文档的已有项目
+      detect: "项目文件 ≥ 10 && !CONTEXT.md && !docs/adr/"
+      behavior: "从代码推断术语. grill-with-docs 可选(无文档可对齐). gitnexus-context 加强"
+    midstream:         # 半中间续接——有 handoff 或 OMEGA 上下文
+      detect: "handoff 文件存在 || OMEGA 有活跃会话记录"
+      behavior: "先恢复 handoff/OMEGA 状态. 在恢复的上下文上继续. 不重新 classify 已完成的部分"
+
+# ═══════════════════════════════════════════
+# 工具库
 # ═══════════════════════════════════════════
 tool_library:
   grill-with-docs:
@@ -202,10 +220,56 @@ tool_library:
 # 状态机
 # ═══════════════════════════════════════════
 states:
+  assess:
+    order: 0
+    on_enter: |
+      评估项目上下文，确定模式。此状态仅允许: 读文件/检查目录。
+      **禁止: Bash/Write/Edit/编码/API。此状态不是执行，是感知。**
+    checks:
+      - "CONTEXT.md 存在? → brownfield_docs"
+      - "docs/adr/ 有文件? → brownfield_docs"
+      - "项目文件数 ≥ 10 且无文档? → brownfield_nodocs"
+      - "项目文件数 < 10 且无文档? → greenfield"
+      - "handoff 文件存在? OMEGA 有活跃上下文? → midstream"
+    mode_detection: |
+      检测方式:
+        1. `ls CONTEXT.md docs/adr/` → 存在即 brownfield_docs
+        2. `find . -type f -not -path '*/.git/*' | wc -l` → <10 = greenfield
+        3. `ls runs/session-briefs/ .langgraph/handoff*` → 存在 = midstream
+        4. OMEGA welcome 中包含 "上次会话" 关键信息 → midstream
+    mode_behavior:
+      greenfield: |
+        没有文档, 没有代码, 从零开始。
+        - 所有路径: plan 状态 MUST 先建立 CONTEXT.md（术语表）
+        - grill-with-docs: 强制触发, 建立初始术语体系
+        - 路径 D: implement 前先有术语表——避免设计和代码术语分裂
+      brownfield_docs: |
+        有 CONTEXT.md 或 ADR——已建立术语+决策记录。
+        - 所有路径: plan 状态 MUST 先读 CONTEXT.md
+        - grill-with-docs: 检查新设计与已有术语/决策的一致性
+        - 如果发现术语冲突: "你的 CONTEXT.md 定义 X 为 A, 但你似乎在用 X 指 B"
+      brownfield_nodocs: |
+        有代码但没有文档。
+        - langgraph-cli-analyze: MUST 先跑(从代码结构推断领域模型)
+        - grill-with-docs: 可选(无文档可对齐, 但可建立初始 CONTEXT.md)
+        - 路径 D: gitnexus-context 加强(代码是唯一真理来源)
+      midstream: |
+        上一次会话未完成, 通过 handoff 或 OMEGA 续接。
+        - 先读 handoff 文件/OMEGA 上下文, 恢复未完成任务列表
+        - classify 基于续接的任务状态, 不是用户当前请求
+        - 已完成的门 [classify ✓] 不需重复
+    output: |
+      项目模式: [greenfield | brownfield_docs | brownfield_nodocs | midstream]
+      证据: <CONTEXT.md 存在 / 文件数 N / handoff 存在 / OMEGA 有记录>
+    forbid: [Bash, Write, Edit, Agent, Python执行, API调用]
+    next: classify
+
   classify:
     order: 1
     on_enter: |
-      分析用户请求关键词, 匹配路径。当前仅允许: 阅读/分析。
+      项目模式: {{assess.mode}}。在此模式下分析用户请求关键词, 匹配路径。
+      当前仅允许: 阅读/分析。
+      midstream 模式: 优先从 handoff/OMEGA 恢复的任务上下文做分类, 不是用户当前请求字面。
     patterns:
       C: "提交|同步|标记|API|批量|batch|PATCH|/check|挖掘|升阶|upgrade|favorite|星标|submit|simulate"
       D: "实现|开发|新功能|重构|写代码|添加模块|加功能|修改代码|写库|脚本"

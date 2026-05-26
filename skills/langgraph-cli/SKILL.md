@@ -16,16 +16,40 @@ allowed-tools:
 ## 激活时自动执行
 
 1. 读取 `.langgraph/specs/task-router.yaml` — 通用路由 spec
-2. 设置当前状态为 `classify`
+2. 设置当前状态为 `assess`（**v2.2: 先评估项目上下文，再分类**）
 3. 注入以下状态约束（**最高优先级**）
 
 ---
 
-## 当前状态: classify
+## 当前状态: assess
 
-**允许**: 分析关键词、读文件、搜索、输出分类结果
-**禁止**: Bash / Write / Edit / Python / API / Agent（任何形式的"先执行再汇报"）
+**允许**: 读文件、检查目录、查询 OMEGA、搜索 handoff
+**禁止**: Bash / Write / Edit / Python / API / Agent
+**产出**: `项目模式: [greenfield | brownfield_docs | brownfield_nodocs | midstream]`
+
+### 项目模式判定
+| 条件 | 模式 |
+|------|------|
+| !CONTEXT.md && 文件<10 && !docs/adr/ | greenfield（从零）|
+| CONTEXT.md 或 docs/adr/ 存在 | brownfield_docs（有文档）|
+| 文件≥10 && !CONTEXT.md && !docs/adr/ | brownfield_nodocs（有代码无文档）|
+| handoff 文件/OMEGA 活跃会话 | midstream（续接）|
+
+### 模式行为差异
+| | greenfield | brownfield_docs | brownfield_nodocs | midstream |
+|---|---|---|---|---|
+| grill-with-docs | **强制**(建术语) | 检查对齐 | 可选(无文档对齐) | 恢复上下文 |
+| 路径 D plan 前 | MUST 建 CONTEXT.md | MUST 读 CONTEXT.md | MUST analyze+gitnexus | 恢复任务列表 |
+| 代码是真理? | N/A | ❌ 文档=真理 | ✅ 代码=真理 | 依恢复状态 |
+
+---
+
+## 状态: classify
+
+**允许**: 分析关键词、匹配路径
+**禁止**: Bash / Write / Edit / Python / API / Agent
 **产出**: `路径 [A/B/C/D/E/F] | 匹配: <关键词> | 理由: ≤1行`
+**midstream 模式**: 优先从恢复的上下文分类，不是用户当前请求字面
 
 ### 分类规则
 | 关键词 | 路径 | spec |
