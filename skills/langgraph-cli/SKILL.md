@@ -16,7 +16,7 @@ allowed-tools:
 ## 激活时自动执行
 
 1. 读取 `.langgraph/specs/task-router.yaml` — 通用路由 spec
-2. 设置当前状态为 `assess`（**v2.2: 先评估项目上下文，再分类**）
+2. 设置当前状态为 `assess`（**v2.3: 每任务 assess + task-switch 检测 + mode refresh**）
 3. 注入以下状态约束（**最高优先级**）
 
 ---
@@ -41,6 +41,15 @@ allowed-tools:
 | grill-with-docs | **强制**(建术语) | 检查对齐 | 可选(无文档对齐) | 恢复上下文 |
 | 路径 D plan 前 | MUST 建 CONTEXT.md | MUST 读 CONTEXT.md | MUST analyze+gitnexus | 恢复任务列表 |
 | 代码是真理? | N/A | ❌ 文档=真理 | ✅ 代码=真理 | 依恢复状态 |
+
+### v2.3: midstream override
+用户说 "不管上次"|"新任务"|"先不管"|"另起"|"从头" → 降级为项目文件状态检测的模式（忽略 handoff/OMEGA）
+
+### v2.3: mode refresh
+每个新任务前 re-check: 上次 assess 后项目状态变了？(新建了 CONTEXT.md? 新写了 ADR?) → 更新模式，≤1秒
+
+### v2.3: task-switch detection
+当前在 execute/verify，用户请求不匹配当前步骤 → "检测到任务切换。新任务重新 assess?" → 用户确认 → 返回 assess
 
 ---
 

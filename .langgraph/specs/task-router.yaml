@@ -21,6 +21,19 @@ context_assessment:
     midstream:         # 半中间续接——有 handoff 或 OMEGA 上下文
       detect: "handoff 文件存在 || OMEGA 有活跃会话记录"
       behavior: "先恢复 handoff/OMEGA 状态. 在恢复的上下文上继续. 不重新 classify 已完成的部分"
+      override: |
+        用户明确放弃续接时降级。
+        触发词: "不管上次"|"新任务"|"先不管"|"另起"|"从头"|"新话题"|"换个任务"|"ignore previous"
+        降级为基于当前项目文件状态的模式(CONTEXT.md→brownfield_docs, 否则→brownfield_nodocs/greenfield)
+      mode_refresh: |
+        同一会话每个新任务前快速 re-check(仅 ls, ≤1秒):
+        - 上次 assess 后建了 CONTEXT.md? → greenfield→brownfield_docs
+        - 上次 assess 后写了 ADR? → brownfield_nodocs→brownfield_docs
+        如果模式变化 → 更新模式, 新任务按新模式行为执行
+      task_switch_detection: |
+        当前在 execute/verify 中, 用户请求不匹配当前步骤:
+        → 暂停, "检测到任务切换。当前[路径X|状态Y]未完成。新任务重新 assess+classify?"
+        → 用户确认后 → 返回 assess, 已完成的步骤保留在上下文
 
 # ═══════════════════════════════════════════
 # 工具库
@@ -225,6 +238,11 @@ states:
     on_enter: |
       评估项目上下文，确定模式。此状态仅允许: 读文件/检查目录。
       **禁止: Bash/Write/Edit/编码/API。此状态不是执行，是感知。**
+      **v2.3: 每个新任务开始前重新 assess（detect mode changes）。**
+    refresh_trigger:
+      - "每个新用户请求开始时（在 classify 前）"
+      - "当前状态为 execute/verify 但用户请求不匹配 → task_switch_detection 触发 → 返回 assess"
+      - "上次 assess 后创建/修改了 CONTEXT.md 或 ADR → 模式可能已变"
     checks:
       - "CONTEXT.md 存在? → brownfield_docs"
       - "docs/adr/ 有文件? → brownfield_docs"
