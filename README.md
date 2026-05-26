@@ -9,11 +9,70 @@
 
 Claude Code + oh-my-claude 让 AI 可以"快速执行"，但面对复杂任务时缺乏**结构化的执行协议**——AI 倾向于跳过分析直接编码，跳过 plan 直接跑 API。纯文档规则（"你必须先分类"）在上下文衰减后约束力接近零。
 
-v2 方案：**spec 状态机 + Skill 运行时**。
-- Skill("langgraph-cli") 不再是权限声明，而是**执行协议运行时**
-- 加载后锁定主会话到状态机（classify → plan → execute → verify），每个状态定义 {允许, 禁止, 工具, 产出}
-- 自检清单注入每次回复末尾，AI 无法跳过
-- 与 oh-my-claude 共存：协议激活时覆盖 "just start working"
+v2 方案：**spec 状态机 + Skill 运行时**。详见下文。
+
+## What's New in v2
+
+### v1 的三个致命问题
+
+| 问题 | v1 表现 | 实际后果 |
+|------|--------|---------|
+| **规则是散文，不是 gate** | 154 行 CLAUDE.md 描述 6 条路径 | 上下文衰减后 AI 当普通文本忽略 |
+| **Skill 是许可，不是约束** | `allowed-tools: Bash(langgraph-cli *)` — "你可以用 CLI 了" | 零行为改变 |
+| **与 oh-my-claude 无声冲突** | "先分类" vs "Just start working" 同时注入 | AI 遵守后者 |
+
+实测 WorldQuant BRAIN 项目工作流遵循率 **30%**（194 行规则的 500+ 行上下文中，"MUST" 标注 5 小时后权重归零）。
+
+### v2 三层架构优化
+
+**Layer 1 — Spec 规范层**（可复用状态机）
+
+6 个 YAML spec（`.langgraph/specs/`）定义每条路径的执行协议。每个状态编码 5 个维度：
+
+```yaml
+states:
+  classify:
+    allow: [分析, 读文件, 搜索]     # 允许的动作
+    forbid: [Bash, Write, Edit, API] # 禁止的动作（优先级 > 用户请求）
+    tools: {skill, CLI, agent}        # 工具分配（按状态绑定，不是一次性全给）
+    output: "路径 X | 关键词 | 理由"  # 必须产出（不是可选）
+    self_check: "我是否先分类了？"    # 自检（注入每次回复末尾）
+```
+
+| 优化点 | 效果 |
+|--------|------|
+| 散文 → 结构化状态机 | survive context compression |
+| forbid 清单 | 硬约束：AI 违反时自报"当前状态禁止此操作" |
+| 工具按状态分配 | grill 只在 plan 加载，tdd 只在 execute 加载——渐进式披露 |
+| output + self_check | 注入回复末尾，AI 无法跳过自检 |
+
+**Layer 2 — Skill 运行时**（约束注入器）
+
+`Skill("langgraph-cli")` 从许可声明重构为**执行协议运行时**：
+
+| v1 | v2 |
+|----|----|
+| "你现在可以调用 langgraph-cli 命令了" | "你被锁定在 classify 状态。只能分析+输出分类。Bash/API 禁止。" |
+| 一次性加载 | 每个状态注入当前 {allow, forbid, tools, output} |
+| 无状态跟踪 | `[路径 X | 状态 Y | → Z]` 标记每次回复 |
+
+**Layer 3 — 共存层**（多系统优先级）
+
+新增 `docs/COEXISTENCE.md`：4 系统职责矩阵（kit / oh-my-claude / Matt Pocock / OMEGA），声明优先级：
+
+> 协议激活时覆盖 oh-my-claude "just start working"。任务完成后恢复。
+
+| 冲突 | oh-my-claude | v2 kit | 解决 |
+|------|-------------|--------|------|
+| 执行速度 | "No preamble" | "先 classify" | kit 覆盖 |
+| 提问 | "No questions" | "grill 追问" | grill 阶段覆盖 |
+| 状态汇报 | "No summaries" | `[路径 X | 状态 Y]` | kit 覆盖 |
+
+#### 配套改进
+
+- **install.sh**：新增 5 项安装后验证（langgraph-cli / skill / OMEGA / GitNexus / oh-my-claude）
+- **TOOL-LAYERING.md**：工具按状态分配表 + 重叠工具去重（grill vs critic vs code-reviewer）
+- **.langgraph/CLAUDE.md**：154 行 → 50 行决策表，指向 specs 目录
 
 ## 快速开始
 
