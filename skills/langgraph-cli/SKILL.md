@@ -1,6 +1,6 @@
 ---
 name: langgraph-cli
-description: "通用执行协议运行时。加载 workflow spec，锁定主会话到状态机中。覆盖 oh-my-claude 的 'just do it' 指令。新项目用 /langgraph init 初始化。"
+description: "全局任务编排器。任务涉及[提交|API|batch|挖掘|实现|开发|重构|bug|诊断|设计|架构|审计]时，必须第一个调用——先接管项目状态，再按需加载领域skill。覆盖oh-my-claude自由执行模式。"
 allowed-tools:
   - Bash(langgraph-cli *)
   - Bash(gitnexus *)
@@ -8,10 +8,30 @@ allowed-tools:
   - Bash(cat *)
   - Read
 ---
+# LangGraph CLI — 全局任务编排器
 
-# LangGraph CLI — 通用执行协议运行时
+**职责**: 感知项目状态 → 路由任务类型 → 按需加载领域 skill → 管理工具调用顺序。
+**不在职责内**: 领域判断（由领域 skill 负责）、具体编码（由 tdd/diagnose 负责）。
 
-全局 CLI（`~/.local/bin/langgraph-cli`）。**本协议激活时覆盖 oh-my-claude 的 "just start working" 指令——状态约束优先。**
+## 编排规则（最高优先级）
+
+### 谁先谁后
+```
+用户请求
+  → langgraph-cli 先接（智能接管 + 状态锁定）
+    → 根据路由分配领域 skill（如 alpha-engineering、grill-with-docs、tdd）
+      → 领域 skill 注入知识约束
+        → 状态机内的工具按当前状态可用
+```
+
+### 冲突裁决
+| 冲突 | 裁决 |
+|------|------|
+| langgraph-cli vs 领域 skill 的触发词重叠 | langgraph-cli 先，然后 langgraph-cli 决定加载哪个领域 skill |
+| 领域 skill hard rule vs execute "继续" | 领域 hard rule 优先 → [SKILL STOP] |
+| oh-my-claude "just start" vs 状态 forbid | forbid 优先 → 报 "当前状态禁止此操作" |
+| grill-with-docs vs grill-me | 项目有 CONTEXT.md/docs/adr/ 用 grill-with-docs，否则用 grill-me |
+| langgraph-cli-review vs code-reviewer | review = per-file即时, code-reviewer = PR diff最终 |
 
 ## 激活时自动执行
 
@@ -19,7 +39,8 @@ allowed-tools:
 2. 输出 **Takeover Card** — 一张结构化卡片，后续所有路径引用
 3. 读取 `.langgraph/specs/task-router.yaml` — 通用路由 spec
 4. 根据 Takeover Card 的 recovery 级别决定行为路径（热恢复/温恢复/冷启动）
-5. 注入以下状态约束（**最高优先级**）
+5. **按需加载领域 skill** — 根据路由结果和项目类型，加载对应的领域 skill（如项目有 alpha-research 特征 + 路径 C → 加载 worldquant-brain-alpha-engineering）
+6. 注入以下状态约束（**最高优先级**）
 
 ---
 
@@ -159,27 +180,44 @@ recommendation: 恢复 batch 执行，从 Phase 3 继续
 
 ---
 
-## 工具库
+---
 
-完整工具库见 `.langgraph/specs/task-router.yaml` → `tool_library` 章节。
-每个工具定义了: trigger(必须/跳过), protocol(步骤), exit(完成条件), deconflict(重叠工具区分)。
+## 工具编排（每个状态切换时执行）
 
-### 状态⇄工具映射
+进入任何新状态时，做这 3 步：
 
-| 状态 | 主要工具 |
-|------|---------|
-| classify | 无（仅分析+输出分类） |
-| plan | grill-with-docs, gitnexus-context, langgraph-cli-analyze, oh-my-claude-advisor |
-| execute | tdd, diagnose, gitnexus-impact, langgraph-cli-review, oh-my-claude-risk-assessor |
-| verify | verify, gitnexus-detect-changes, oh-my-claude-validator, oh-my-claude-code-reviewer |
-| done | omega-store |
+### 1. 工具可用性检查
+列出当前状态允许的所有工具。只有表里的工具可以在这个状态被调用。
 
-### MUST NOT SKIP 工具
+| 状态 | 可用 Skill | 可用 CLI | 可用 Agent |
+|------|-----------|---------|-----------|
+| assess | 无 | 无 | 无 |
+| classify | 无 | 无 | 无 |
+| plan | grill-with-docs, 领域skill（按项目类型） | analyze, context | Explore, advisor |
+| preflight | 无（只读 API 是 Bash，不是 skill） | 无 | 无 |
+| execute | tdd, diagnose, 领域skill | review, impact | general-purpose, risk-assessor |
+| analyze | 无 | 无 | 无 |
+| verify | verify | detect_changes | validator, code-reviewer |
+| done | handoff | 无 | omega-store |
 
-以下工具在对应状态下 **禁止跳过**：
+### 2. 去重检查
+如果两个工具做类似的事，只用一个：
+
+```
+grill-with-docs OR grill-me → 取决于有无 CONTEXT.md
+langgraph-cli-review IN execute → 与 code-reviewer IN verify 不冲突（不同阶段）
+verify skill IN verify → 总是用（evidence-based completion）
+validator IN verify → 自动并行（测试/lint）
+security-auditor → 只在用户说"安全审查"或涉及认证/加密时触发
+```
+
+### 3. 不可跳过检查
+以下工具在自己的状态里禁止跳过：
 - **gitnexus-context**: 修改任何函数/类前
-- **gitnexus-impact**: 编辑任何符号前。HIGH/CRITICAL → 暂停+汇报
+- **gitnexus-impact**: 编辑任何符号前。返回 HIGH/CRITICAL → 暂停
 - **gitnexus-detect-changes**: 路径 D 提交前
+
+自检: "我在当前状态允许的工具里挑了吗？有没有跳过不可跳过的？"
 
 ---
 
