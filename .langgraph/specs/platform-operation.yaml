@@ -1,39 +1,32 @@
-# Platform Operation — 路径 C：平台操作/API 调用
-# 匹配：提交、标记、同步、批量操作、API 调用、账户管理
+# Platform Operation — 路径 C
 spec:
   name: platform-operation
-  version: "2.0"
+  version: "2.1"
   extends: task-router
   path: C
   triggers: ["提交", "同步", "标记", "API", "批量", "batch", "PATCH", "/check", "挖掘", "升阶", "upgrade", "favorite", "星标", "账户", "submit", "simulate"]
 
 states:
   plan:
-    tools:
-      - "langgraph-cli run api-batch.yaml"
-        when: "批量操作（多个 alpha/多次 API 调用）"
-        provides: [plan→validate→execute→record 工作流]
-      - "project_overrides.api_client"
-        when: "项目配置了 api_client"
-        provides: [认证方式, 调用模式, 限流规则]
+    tools_from_library:
+      - langgraph-cli-run      # trigger: 批量API(api-batch.yaml)
     rules:
-      - "声明 API 端点 + 请求方法 + 限流策略"
-      - "可逆操作优先: GET 检查 → PATCH 修改 → POST 创建"
-      - "不可逆操作（submit/delete）标注 [H] 风险"
-      - "逐步骤: 每步骤对应一个 API 调用或一批同类型调用"
-    output: "API 操作计划:\n1. [H/M/L] GET/PATCH/POST <endpoint> — <目的>\n..."
+      - "声明 API 端点 + 方法 + 限流"
+      - "可逆优先: GET→PATCH→POST"
+      - "不可逆操作(submit/delete)标 [H]"
+    output: "API 操作计划:\n1. [H/M/L] METHOD endpoint — 目的\n..."
 
   execute:
     rules:
-      - "每步 API 调用后: 检查 status code，记录结果"
-      - "限流触发: 等待 retry-after 头指定的时间"
-      - "错误码: 暂停 + 汇报，不自动重试"
-      - "产出: 操作结果写入 runs/ 对应目录"
-      - "oh-my-claude 优先级声明: 本协议覆盖 'just start working'。API 操作前必须通过 plan 状态。"
+      - "每步: 检查 status code, 记录结果"
+      - "限流: 等待 retry-after"
+      - "错误: 暂停+汇报"
+      - "产出: runs/ 对应目录"
 
   verify:
+    tools_from_library:
+      - verify                 # evidence-based completion
     checks:
-      - "所有 API 操作结果已记录"
-      - "提交操作: /check 8-PASS 验证通过"
-      - "产出文件已写入 runs/"
-      - "账户状态已同步（如涉及变更）"
+      - "所有操作结果已记录"
+      - "提交: /check 8-PASS 通过"
+      - "账户状态已同步"

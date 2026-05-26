@@ -1,115 +1,272 @@
-# Task Router — 通用任务路由规范
-# 所有任务进入的第一个 spec。Skill 加载后根据此 spec 锁定主会话。
+# Task Router — 通用任务路由 + 全工具库
 spec:
   name: task-router
-  version: "2.0"
+  version: "2.1"
   entry: classify
-  description: |
-    通用任务分类 + 分发。覆盖所有项目、所有语言、所有 LLM。
-    项目专属覆盖通过 project_overrides 注入，不修改本 spec。
 
+# ═══════════════════════════════════════════
+# 工具库：每个工具的 trigger / protocol / exit / deconflict / skip
+# ═══════════════════════════════════════════
+tool_library:
+  grill-with-docs:
+    skill: "grill-with-docs"
+    provides: [需求对齐, 术语收敛, CONTEXT.md/ADR 更新]
+    trigger:
+      must: "CONTEXT.md 或 docs/adr/ 存在 | 跨文件修改(≥3) | 用户术语模糊/过载 | 新概念/新数据流"
+      skip: "单文件修改 AND 指令精确 AND 无文档冲突可能"
+    protocol: "逐题追问, 每次一个, 等待反馈, 提供推荐答案。优先探索代码库回答。不批处理。"
+    exit: "所有分支解决 AND 术语收敛 AND 设计决策已记录"
+    deconflict:
+      vs_grill_me: "grill-with-docs 检查文档+写文档, grill-me 仅纯策略逻辑 stress-test, 不检查文档"
+
+  diagnose:
+    skill: "diagnose"
+    provides: [诊断闭环: 重现→定位→修复→回归]
+    trigger:
+      must: "用户报 bug/error/异常 | 2次以上 fix 尝试失败 | 性能突然退化"
+    protocol: |
+      Phase 1: 建立反馈循环（最快最重要——测试/脚本/确定性复现信号）
+      Phase 2: 二分法缩小范围
+      Phase 3: 假设验证（用证据, 不猜测）
+      Phase 4: 最小修复（不趁机重构）
+      Phase 5: 回归验证（确认修了+没引入新问题）+ 追加测试防复发
+    exit: "bug 不再复现 AND 回归测试通过 AND 根因已定位"
+
+  tdd:
+    skill: "tdd"
+    provides: [test-first workflow, red-green-refactor]
+    trigger:
+      must: "新功能实现 | 非琐碎 bugfix | 用户说 'tdd'/'test first'"
+      skip: "纯配置修改 | 文档更新 | 已有完整测试覆盖的一行修复"
+    protocol: |
+      每步骤: 写测试→验证失败→最小实现→测试通过→重构(仅当前步骤范围)
+      禁止: 跳过测试写实现 | 一次多步 | 横切(所有测试→所有代码) | 实现不需要的抽象
+    exit: "所有步骤测试通过 AND gitnexus detect_changes 确认范围"
+
+  worldquant-brain-alpha-engineering:
+    skill: "worldquant-brain-alpha-engineering"
+    provides: [硬规则, submission gate, field 判断, sign-flip protocol]
+    trigger:
+      must: "项目检测为 alpha-research AND 任务涉及 alpha 设计/挖掘/提交/诊断"
+      skip: "纯读文件/解释代码/账户状态查询"
+
+  prototype:
+    skill: "prototype"
+    provides: [throwaway validation: LOGIC 终端测试 or UI 多方案对比]
+    trigger:
+      must: "设计不确定的数据模型/状态机 ('这个逻辑对吗?') | 需要比较多个 UI 方案"
+    protocol: "LOGIC 分支: tiny CLI app 推动状态机通过难推理的 case。UI 分支: 多套激进不同方案, URL param 切换。"
+    exit: "问题已回答 → 扔掉原型, 保留结论"
+
+  verify:
+    skill: "verify"
+    provides: [evidence-based completion verification]
+    trigger:
+      must: "路径 D 编码完成 | 提交 PR 前 | 用户说 'verify'/'验证'"
+    protocol: "运行测试→检查产出→对比计划→确认无遗漏。不是自己说 'done'——要有证据。"
+    exit: "测试 PASS AND 产出匹配计划 AND 无未提交变更破坏性副作用"
+
+  grill-me:
+    skill: "grill-me"
+    provides: [纯策略逻辑 stress-test, 无文档检查]
+    trigger:
+      must: "用户明确 'grill me' 或 'stress test this plan'"
+      skip: "项目有 CONTEXT.md → 用 grill-with-docs 代替（因为需要文档交叉验证）"
+    protocol: "逐题追问, 每次一个, 探索代码库回答。不写文档。"
+    exit: "所有决策分支已解决"
+    deconflict:
+      vs_grill_with_docs: "grill-me 不检查 CONTEXT.md/ADR, 不写文档。有文档的项目用 grill-with-docs。"
+
+  handoff:
+    skill: "handoff"
+    provides: [会话压缩传递]
+    trigger:
+      must: "任务未完成但上下文将满 | 用户说'下次继续'/'handoff' | 多会话追踪"
+    protocol: "压缩当前会话状态+未完成任务+关键决策 → handoff 文档。agent 读入即可继续。"
+
+  to-prd:
+    skill: "to-prd"
+    provides: [PRD 生成→发布到 issue tracker]
+    trigger:
+      must: "用户说 'create PRD' / '生成 PRD' | 设计完成后需要正式文档化"
+
+  to-issues:
+    skill: "to-issues"
+    provides: [方案→独立可 grab 的 issues]
+    trigger:
+      must: "用户说 'break into issues'/'拆成 issues' | plan 完成后需要分配任务"
+    protocol: "用 tracer-bullet 竖切——每个 issue 一个完整 vertical slice。"
+
+  caveman:
+    skill: "caveman"
+    provides: [超高压缩模式, 节省 ~75% token]
+    trigger:
+      must: "用户说 'caveman'/'少说话'/'简短点' | 上下文空间紧张"
+
+  langgraph-cli-analyze:
+    cli: "langgraph-cli analyze ."
+    provides: [项目结构全局分析]
+    trigger:
+      must: "路径 B: 运维扫描 | 路径 F: 设计前理解现状 | 陌生项目首次"
+    deconflict:
+      vs_gitnexus_context: "analyze = 全局概览(文件+架构), context = 单个符号深潜(调用者+被调用者)"
+      vs_gitnexus_impact: "impact = 修改前评估 blast radius, analyze = 理解全局架构"
+
+  langgraph-cli-review:
+    cli: "langgraph-cli review <file>"
+    provides: [并行安全+质量审查]
+    trigger:
+      must: "路径 D: 编码完成后立即 | 提交前 final check"
+    deconflict:
+      vs_oh_my_claude_code_reviewer: "review = 当前会话即时同步审查, code-reviewer = PR diff 全面审查(agent 委托)"
+
+  langgraph-cli-run:
+    cli: "langgraph-cli run <workflow.yaml>"
+    provides: [YAML 多 agent 并行工作流]
+    trigger:
+      must: "批量 API 操作(api-batch.yaml) | 批量代码审查(code-review.yaml)"
+      skip: "单次 API 调用 | <4 个 alpha 操作"
+
+  gitnexus-context:
+    cli: "gitnexus context <symbol>"
+    provides: [符号完整上下文: 调用者+被调用者+所在 flow]
+    trigger:
+      must: "修改/理解任何函数/类/符号前"
+
+  gitnexus-impact:
+    cli: "gitnexus impact <symbol>"
+    provides: [blast radius: 直接调用者+受影响流程+风险等级]
+    trigger:
+      must: "编辑任何函数/类/符号前——MUST NOT SKIP"
+    protocol: "如果返回 HIGH/CRITICAL → 暂停, 汇报影响范围, 等待用户确认"
+    deconflict:
+      vs_gitnexus_context: "context = 理解(进入时), impact = 评估改动后果(改前)"
+
+  gitnexus-detect-changes:
+    cli: "gitnexus detect_changes"
+    provides: [确认变更只影响预期符号]
+    trigger:
+      must: "路径 D: 提交前 | 编码完成后的 verify 状态"
+    protocol: "如果影响超预期 → 回 implement 修复"
+
+  oh-my-claude-critic:
+    agent: "oh-my-claude:critic"
+    provides: [plan 审查(执行前)]
+    trigger:
+      must: "路径 D/F: plan 完成后, implement 前 | 复杂计划 (>5 步骤)"
+    protocol: "Agent(subagent_type='oh-my-claude:critic', prompt='Review this plan...')"
+    output: "APPROVED / NEEDS_REVISION / REJECTED"
+
+  oh-my-claude-code-reviewer:
+    agent: "oh-my-claude:code-reviewer"
+    provides: [实现后全面代码审查(PR diff 级)]
+    trigger:
+      must: "路径 D: review 状态, 全部代码写完 merge 前"
+    deconflict:
+      vs_langgraph_cli_review: "review = per-file 即时, code-reviewer = final PR diff"
+
+  oh-my-claude-validator:
+    agent: "oh-my-claude:validator"
+    provides: [技术正确性: 测试/lint/验证]
+    trigger:
+      must: "编码完成后, 声明 done 前"
+
+  oh-my-claude-security-auditor:
+    agent: "oh-my-claude:security-auditor"
+    provides: [OWASP/注入/凭据/依赖CVE 深度审查]
+    trigger:
+      must: "用户说 'security review' | 涉及认证/授权/加密/外部输入"
+
+  oh-my-claude-advisor:
+    agent: "oh-my-claude:advisor"
+    provides: [plan 前 gap 分析: 隐藏需求/范围风险]
+    trigger:
+      must: "复杂任务(跨系统/跨模块) | 用户请求不完整(信息差 >30%)"
+
+  oh-my-claude-risk-assessor:
+    agent: "oh-my-claude:risk-assessor"
+    provides: [变更风险评估(功能性/安全/兼容/性能/运维)]
+    trigger:
+      must: "非琐碎 plan 完成后, 执行前"
+
+  omega-memory:
+    provides: [自动长期记忆]
+    trigger:
+      auto: "SessionStart hook 注入欢迎简报"
+      manual: "omega_store(content, 'decision') — 完成任务后保存关键决策"
+    deconflict:
+      vs_langgraph_cli_remember: "OMEGA = 自动跨会话持久化, langgraph-cli remember = 用户明确'记住这个'的显式保存"
+      vs_handoff: "OMEGA = 长期, handoff = 单会话→下一会话的短期快照"
+
+# ═══════════════════════════════════════════
+# 状态机
+# ═══════════════════════════════════════════
 states:
   classify:
     order: 1
     on_enter: |
-      分析用户请求。匹配关键词到路径。输出分类结果。
-      当前状态仅允许: 阅读/分析。禁止: Bash/Write/Edit/API/编码。
+      分析用户请求关键词, 匹配路径。当前仅允许: 阅读/分析。
     patterns:
-      C: "提交|同步|标记|API|批量|batch|PATCH|/check|挖掘|升阶|upgrade|favorite|星标"
-      D: "实现|开发|新功能|重构|写代码|添加模块|加功能|修改代码"
-      E: "bug|报错|不工作|修复|调试|诊断|error|异常"
-      F: "设计|架构|方案|规划|怎么实现|技术选型"
-      B: "审计|扫描|清理|安全审查|冗余|代码质量|依赖检查"
-      A: null  # 默认：任何不匹配上述模式的请求
+      C: "提交|同步|标记|API|批量|batch|PATCH|/check|挖掘|升阶|upgrade|favorite|星标|submit|simulate"
+      D: "实现|开发|新功能|重构|写代码|添加模块|加功能|修改代码|写库|脚本"
+      E: "bug|报错|不工作|修复|调试|诊断|error|异常|性能"
+      F: "设计|架构|方案|规划|怎么实现|技术选型|选什么"
+      B: "审计|扫描|清理|安全审查|冗余|代码质量|依赖检查|项目健康"
+      A: null
     rules:
-      - "A 路径条件: 不匹配任何上述模式 → 可自由执行（读文件/解释/搜索/简单问答）"
-      - "C-F 路径: 匹配后立即停止当前动作，输出分类，等待 spec 加载"
-    output: "路径 [A/B/C/D/E/F] | 匹配关键词: <word> | 理由: ≤1行"
-    forbid: [Bash, Write, Edit, Agent, "Python脚本执行", "API调用"]
-    next: plan  # 路径确认后进入计划状态
-    self_check: "我是否在执行前先分类了？"
+      - "A: 不匹配任何模式 → 自由执行"
+      - "C-F: 匹配后立即停止当前动作, 输出分类, 加载 spec"
+    output: "路径 [A/B/C/D/E/F] | 匹配: <关键词> | 理由: ≤1行"
+    forbid: [Bash, Write, Edit, Agent, Python执行, API调用]
+    next: plan
+    self_check: "我在执行前先分类了吗?"
 
   plan:
     order: 2
-    on_enter: |
-      根据分类结果，加载对应路径 spec，输出步骤计划。
-      路径 A 跳过此状态直接执行。
-    tools:
-      - skill: "worldquant-brain-alpha-engineering"
-        when: "项目类型 = alpha-research"
-        provides: [硬规则, submission gate, field 判断]
-      - "gitnexus context <核心符号>"
-        when: "路径 D/F 且项目有 GitNexus"
-        provides: [已有实现检查]
-      - skill: "grill-with-docs"
-        when: "路径 D/F 且非琐碎"
-        provides: [需求对齐, 术语收敛]
-        trigger: |
-          必须触发的条件（满足任一）:
-            - CONTEXT.md 或 docs/adr/ 存在 → 必须检查计划是否与现有术语/决策一致
-            - 跨文件修改（≥3 文件）→ 设计方案可能有歧义
-            - 用户使用模糊/过载术语（如"提交"、"优化"、"重构"）→ 需求不精确
-            - 涉及新概念或新数据流 → 术语需要收敛
-          可以跳过的条件（全部满足）:
-            - 单文件修改 + 用户指令精确 + 无文档冲突可能
-        protocol: |
-          逐题追问，每次只问一个问题，等待用户反馈。
-          每个问题提供推荐答案。能从代码库回答的问题直接探索代码库。
-          不批量提问——grill 是对话引擎，不是问卷。
-        exit: |
-          所有分支已解决 AND 术语已收敛（CONTEXT.md 无冲突）AND 设计决策已记录（ADR 或等价）
-          如果任何分支未解决 → 停留在 plan 状态，继续 grill
+    on_enter: "加载对应路径 spec, 查工具库触发条件, 输出步骤计划。"
+    tools: [grill-with-docs, worldquant-brain-alpha-engineering, gitnexus-context, langgraph-cli-analyze, oh-my-claude-advisor]
     rules:
       - "每步 ≤1行 + 风险标记 [H/M/L]"
-      - "涉及 API: 声明限流策略"
-      - "涉及文件创建: 声明产出路径"
-    output: "步骤计划:\n1. [风险] 步骤描述\n2. ..."
-    forbid: [Write, Edit, "API写操作", "提交操作"]
+      - "涉及 API: 声明限流"
+      - "涉及文件创建: 声明路径"
+      - "工具库中标记 'MUST NOT SKIP' 的: 禁止跳过"
+    output: "步骤计划:\n1. [H/M/L] 步骤描述\n2. ..."
+    forbid: [Write, Edit, API写操作, 提交操作]
     next: execute
-    self_check: "计划是否足够具体？用户一眼能看出要做什么？"
+    self_check: "每个引用的工具我都检查了工具库的 trigger 条件吗?"
 
   execute:
     order: 3
-    on_enter: |
-      逐步骤执行计划。每步完成后标记 [✓]。遇错误暂停。
-    tools:
-      - skill: "tdd"
-        when: "路径 D"
-        provides: [test-first workflow]
-      - "langgraph-cli review <file>"
-        when: "路径 D 完成编码后"
-        provides: [并行安全+质量审查]
-      - skill: "diagnose"
-        when: "路径 E"
-        provides: [诊断闭环]
+    on_enter: "逐步骤执行, 每步完成后标记 [✓]。遇错暂停。"
+    tools: [tdd, diagnose, langgraph-cli-review, gitnexus-impact, oh-my-claude-risk-assessor]
     rules:
-      - "步骤完成后必须输出 [✓ 步骤N/M | 结果]"
-      - "错误 → 暂停 + 汇报，不自动重试"
-      - "不可逆操作 → 暂停 + 请求确认"
-      - "oh-my-claude 优先级声明: 本协议覆盖 'just start working' 指令。状态约束优先。"
+      - "每步完成: 输出 [✓ N/M | 结果]"
+      - "gitnexus impact: 编辑任何符号前 MUST 检查"
+      - "错误 → 暂停+汇报, 不自动重试"
+      - "不可逆操作 → 暂停+请求确认"
+      - "覆盖 oh-my-claude 'just start working'"
     output: "[✓ 1/M] [✓ 2/M] ... [✓ M/M]"
-    forbid: [跳过步骤, 合并步骤, "声称完成但缺少 [✓]"]
+    forbid: [跳过步骤, 合并步骤, 声称完成但缺[✓]]
     next: verify
-    self_check: "每步都有 [✓] 吗？有跳过或合并吗？"
 
   verify:
     order: 4
-    on_enter: |
-      验证所有步骤已完成。检查产出是否符合预期。
+    on_enter: "验证所有步骤完成, 检查产出。"
+    tools: [verify, gitnexus-detect-changes, oh-my-claude-validator, oh-my-claude-code-reviewer, oh-my-claude-security-auditor]
     checks:
-      - "所有步骤都有 [✓]"
+      - "所有步骤有 [✓]"
       - "产出文件路径正确"
-      - "无未提交的凭据"
-      - "API 操作结果已记录"
+      - "无凭据泄露"
+      - "路径 D: gitnexus detect_changes 确认范围"
       - "路径 D: langgraph-cli review 通过"
-    output: "验证: N/N 步骤完成 | 遗漏: 无 | 问题: 无"
+    output: "验证: N/N 完成 | 遗漏: 无 | 问题: 无"
     next: done
-    self_check: "我真的验证了还是跳过了？"
 
   done:
     order: 5
-    on_enter: "任务完成。记录决策、输出摘要。"
+    on_enter: "任务完成。记录决策, 输出摘要。"
     actions:
-      - "omega_store(content, 'decision') — 保存关键决策"
-      - "输出: 变更文件列表 + 验证结果"
-    output: "## 完成摘要\n- 任务: ...\n- 产出: ...\n- 决策记录: ..."
+      - "omega_store(content, 'decision') — 关键决策"
+      - "langgraph-cli remember — 用户明确'记住这个'的"
+      - "输出: 变更文件 + 验证结果 + 后续建议"
+    output: "## 完成摘要\n- 任务: ...\n- 产出: ...\n- 决策: ..."

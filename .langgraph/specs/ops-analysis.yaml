@@ -1,23 +1,17 @@
-# Ops Analysis — 路径 B：运维分析
-# 匹配：审计、扫描、清理、冗余分析、安全审查、代码质量
+# Ops Analysis — 路径 B
 spec:
   name: ops-analysis
-  version: "2.0"
+  version: "2.1"
   extends: task-router
   path: B
   triggers: ["审计", "扫描", "清理", "安全审查", "冗余", "代码质量", "依赖检查", "项目健康", "重构建议"]
 
 states:
   plan:
-    on_enter: "全局分析项目结构，输出结构化发现。"
-    tools:
-      - "langgraph-cli analyze ."
-        provides: [项目结构分析]
-      - "langgraph-cli review <files>"
-        when: "审查特定文件"
-        provides: [并行安全+质量审查]
+    tools_from_library:
+      - langgraph-cli-analyze  # 全局项目分析
+      - oh-my-claude-security-auditor  # trigger: 用户说'security'
     rules:
-      - "分析优先: 先全局扫描，再深入具体文件"
-      - "安全扫描排除: 凭据文件/忽略路径（来自 project_overrides）"
-      - "发现分级: P0(立即修)/P1(计划修)/P2(建议修)"
-    output: "## 分析报告\n### P0: ...\n### P1: ...\n### P2: ..."
+      - "全局→深入: 先 analyze, 再 target 具体文件"
+      - "发现分级: P0(立即)/P1(计划)/P2(建议)"
+    output: "## 分析报告\n### P0\n### P1\n### P2"

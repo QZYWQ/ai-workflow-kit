@@ -52,39 +52,27 @@ allowed-tools:
 
 ---
 
-## 工具按状态分配
+## 工具库
 
-| 状态 | 可用 skill | 可用 CLI |
-|------|-----------|---------|
-| classify | 无 | 无 |
-| plan | grill-with-docs, worldquant-brain-alpha-engineering | analyze, context |
-| execute | tdd, diagnose | review, test, impact |
-| verify | verify | detect_changes, pr |
+完整工具库见 `.langgraph/specs/task-router.yaml` → `tool_library` 章节。
+每个工具定义了: trigger(必须/跳过), protocol(步骤), exit(完成条件), deconflict(重叠工具区分)。
 
-### grill-with-docs 详细调用规则
+### 状态⇄工具映射
 
-**触发判定**（满足任一即触发）:
-- 跨文件修改（≥3 文件）
-- 项目含 CONTEXT.md 或 docs/adr/
-- 用户术语模糊/过载（"重构"、"优化"、"搞一下"）
-- 涉及新概念、新数据流、新模块
+| 状态 | 主要工具 |
+|------|---------|
+| classify | 无（仅分析+输出分类） |
+| plan | grill-with-docs, gitnexus-context, langgraph-cli-analyze, oh-my-claude-advisor |
+| execute | tdd, diagnose, gitnexus-impact, langgraph-cli-review, oh-my-claude-risk-assessor |
+| verify | verify, gitnexus-detect-changes, oh-my-claude-validator, oh-my-claude-code-reviewer |
+| done | omega-store |
 
-**可跳过的条件**（全部满足才跳过）:
-- 单文件修改 + 用户指令精确 + 无文档冲突可能
+### MUST NOT SKIP 工具
 
-**执行协议**:
-- 逐题追问，每次一个问题，等待反馈
-- 每个问题提供推荐答案
-- 能探索代码库回答的问题不提问
-- 不批量提问——grill 是对话引擎，不是问卷
-
-**grill-with-docs vs grill-me**:
-| | grill-with-docs | grill-me |
-|---|---|---|
-| 文档检查 | ✅ 交叉验证 CONTEXT.md + ADR | ❌ |
-| 写入 | ✅ Inline 更新文档 | ❌ |
-| 场景 | 编码前设计对齐 | 纯策略逻辑 stress-test |
-| 触发 | 路径 D/F plan 状态 | 用户明确"grill me" |
+以下工具在对应状态下 **禁止跳过**：
+- **gitnexus-context**: 修改任何函数/类前
+- **gitnexus-impact**: 编辑任何符号前。HIGH/CRITICAL → 暂停+汇报
+- **gitnexus-detect-changes**: 路径 D 提交前
 
 ---
 
