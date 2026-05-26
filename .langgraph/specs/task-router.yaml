@@ -1,10 +1,11 @@
 # Task Router — 通用任务路由 + 全工具库
 spec:
   name: task-router
-  version: "2.4"
+  version: "2.5"
   entry: assess
   notes: |
-    v2.4: +error_levels(exp/rate/sys) +skill_composition(domain skill 并行) +multi_step_flow(子任务切换不重置)
+    v2.5: +intelligent-takeover(四维感知+takeover_card+hot/warm/cold恢复)
+    v2.4: +error_levels(exp/rate/sys) +skill_composition +multi_step_flow
 
 # ═══════════════════════════════════════════
 # 项目上下文评估（classify 前执行）
@@ -249,9 +250,16 @@ states:
   assess:
     order: 0
     on_enter: |
-      评估项目上下文，确定模式。此状态仅允许: 读文件/检查目录。
+      先运行智能接管协议（`intelligent-takeover.yaml`），输出 Takeover Card。
+      然后评估项目模式。此状态仅允许: 读文件/检查目录。
       **禁止: Bash/Write/Edit/编码/API。此状态不是执行，是感知。**
-      **v2.3: 每个新任务开始前重新 assess（detect mode changes）。**
+      **v2.5: 接管优先——hot recovery 会跳过后续 assess+classify，直接恢复任务。**
+    takeover_first: |
+      执行 intelligent-takeover.yaml 的四层感知（state → context → health → rules）。
+      输出 Takeover Card 后，根据 recovery 级别路由:
+        hot  → 注入 Takeover Card，跳过 assess+classify，直接恢复任务栈
+        warm → 从 handoff/OMEGA 重建上下文，然后进入 classify
+        cold → 进入标准 assess 流程（下方 checks）
     refresh_trigger:
       - "每个新用户请求开始时（在 classify 前）"
       - "当前状态为 execute/verify 但用户请求不匹配 → task_switch_detection 触发 → 返回 assess"

@@ -15,9 +15,66 @@ allowed-tools:
 
 ## 激活时自动执行
 
-1. 读取 `.langgraph/specs/task-router.yaml` — 通用路由 spec
-2. 设置当前状态为 `assess`（**v2.4: +preflight 探索状态 + 错误分级 + 技能叠加**）
-3. 注入以下状态约束（**最高优先级**）
+1. **智能接管** — 读取 `.langgraph/specs/intelligent-takeover.yaml`，按四维感知协议探测项目状态（见下方接管协议）
+2. 输出 **Takeover Card** — 一张结构化卡片，后续所有路径引用
+3. 读取 `.langgraph/specs/task-router.yaml` — 通用路由 spec
+4. 根据 Takeover Card 的 recovery 级别决定行为路径（热恢复/温恢复/冷启动）
+5. 注入以下状态约束（**最高优先级**）
+
+---
+
+## 接管协议 (Intelligent Takeover)
+
+### Layer 1 — State: 项目四维状态
+- **lifecycle**: newborn / growing / mature
+  - 判定依据: 文件数 + git log 深度 + 有无 docs/ 或产出目录
+- **activity**: active(最近 < 2天) / idle(2-14天) / dormant(>14天)
+  - 判定依据: git log -1 + 工作区状态
+- **integrity**: clean / dirty / broken
+  - 判定依据: git status + 关键文件存在性
+- 产出: `lifecycle=..., activity=..., integrity=...`
+
+### Layer 2 — Context: 上次做到哪了
+- 检查 `.langgraph/state.json`（活跃任务栈 + 当前路径+状态）
+- 检查 handoff 文件、OMEGA 简报
+- 判定 recovery 级别:
+  - **hot**: state.json 存在 + activity=active → 直接恢复任务栈
+  - **warm**: 有 OMEGA/handoff 但无 state.json → 从记忆重建
+  - **cold**: 无任何上下文 → 全新评估
+- 产出: `recovery=hot|warm|cold, task_stack=[...], last_path=...`
+
+### Layer 3 — Health: 工具链健康
+- credential 存在性（不实际调用 API）
+- git 可用性
+- 依赖文件存在性（package.json / pyproject.toml / requirements.txt）
+- 判定: full / degraded / broken
+  - degraded → 标注不可用路径
+- 产出: `health=full|degraded|broken, unavailable=[...]`
+
+### Layer 4 — Rules: 约束规则加载
+- 从 CLAUDE.md / AGENTS.md / CONTEXT.md 提取硬规则
+- 提取领域术语表
+- 产出: `hard_rules=N, domain_terms=[...], output_root=...`
+
+### 接管后的行为路由
+| recovery | 行为 |
+|----------|------|
+| hot + active_task 未完成 | **直接恢复任务栈**，回到上次路径+状态，不重新 classify |
+| warm | 从 handoff/OMEGA 重建上下文，按用户当前请求 classify |
+| cold | 标准 assess → classify |
+| health=degraded | 标注不可用路径，用户触发时提前告知 |
+| integrity=broken | 进入诊断模式，先修基础设施 |
+
+### Takeover Card
+接管完成后输出一张卡，注入后续所有路径的上下文。格式：
+```
+## Takeover Card
+lifecycle=growing | activity=active | integrity=dirty
+recovery=hot | health=full | rules=8 hard rules
+active_task: gross_profitability_24h_batch
+current_path: C | current_state: execute | step: 4/5
+recommendation: 恢复 batch 执行，从 Phase 3 继续
+```
 
 ---
 
