@@ -39,7 +39,8 @@ allowed-tools:
 - 检查 handoff 文件、OMEGA 简报
 - 判定 recovery 级别:
   - **hot**: state.json 存在 + activity=active → 直接恢复任务栈
-  - **warm**: 有 OMEGA/handoff 但无 state.json → 从记忆重建
+  - **warm**: 无 state.json 但有 OMEGA/handoff → 从记忆重建
+  - **inferred**: 无 state.json 无 OMEGA, 但有 git log + 产出目录 → 推断活跃方向, 标注 [inferred]
   - **cold**: 无任何上下文 → 全新评估
 - 产出: `recovery=hot|warm|cold, task_stack=[...], last_path=...`
 
@@ -60,7 +61,8 @@ allowed-tools:
 | recovery | 行为 |
 |----------|------|
 | hot + active_task 未完成 | **直接恢复任务栈**，回到上次路径+状态，不重新 classify |
-| warm | 从 handoff/OMEGA 重建上下文，按用户当前请求 classify |
+| warm | 从 OMEGA/handoff 重建上下文，按用户当前请求 classify |
+| inferred | 从 git log + 产出目录推断活跃方向，标注 [inferred]，用户确认后 classify |
 | cold | 标准 assess → classify |
 | health=degraded | 标注不可用路径，用户触发时提前告知 |
 | integrity=broken | 进入诊断模式，先修基础设施 |
