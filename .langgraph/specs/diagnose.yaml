@@ -1,0 +1,33 @@
+# Diagnose — 路径 E：故障诊断
+# 匹配：bug、报错、不工作、调试、异常、性能
+spec:
+  name: diagnose
+  version: "2.0"
+  extends: task-router
+  path: E
+  triggers: ["bug", "报错", "不工作", "修复", "调试", "诊断", "error", "异常", "性能"]
+
+states:
+  plan:
+    on_enter: "定位问题根因，不猜测，用证据。"
+    tools:
+      - skill: "diagnose"
+        provides: [诊断闭环方法论]
+      - "gitnexus context <错误涉及的符号>"
+        when: "项目有 GitNexus"
+      - "langgraph-cli analyze ."
+        provides: [项目结构上下文]
+    rules:
+      - "重现优先: 先确认能稳定重现"
+      - "二分法缩小范围: 注释/隔离可疑代码"
+      - "不猜测: 每个假设用 evidence 验证"
+    output: "根因分析 | 受影响符号 | 修复方案"
+
+  implement:
+    on_enter: "最小修复。不趁机重构。"
+    rules:
+      - "最小变更: 只修 bug，不动无关代码"
+      - "验证: 修复后确认 bug 不再重现"
+      - "回归: 确认修复不引入新问题"
+      - "追加测试: 防止同样 bug 再次出现"
+    output: "[✓] 修复完成 | 测试: PASS | 回归: 无新问题"

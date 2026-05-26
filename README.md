@@ -7,9 +7,13 @@
 
 ## 解决的问题
 
-Claude Code 原生能力强，但面对项目时缺乏**结构化的执行协议**——审计什么时候用 analyze 还是直接 Bash？实现新功能走 TDD 还是直接写？bug 排查靠灵感还是靠闭环？
+Claude Code + oh-my-claude 让 AI 可以"快速执行"，但面对复杂任务时缺乏**结构化的执行协议**——AI 倾向于跳过分析直接编码，跳过 plan 直接跑 API。纯文档规则（"你必须先分类"）在上下文衰减后约束力接近零。
 
-AI Workflow Kit 提供一套**项目级可插拔的强制路由规则**：AI 收到任务先分类，再按路径加载对应 skill、执行结构化工作流。琐碎任务走自由通道，复杂任务走方法论——该严格的严格，该灵活的灵活。
+v2 方案：**spec 状态机 + Skill 运行时**。
+- Skill("langgraph-cli") 不再是权限声明，而是**执行协议运行时**
+- 加载后锁定主会话到状态机（classify → plan → execute → verify），每个状态定义 {允许, 禁止, 工具, 产出}
+- 自检清单注入每次回复末尾，AI 无法跳过
+- 与 oh-my-claude 共存：协议激活时覆盖 "just start working"
 
 ## 快速开始
 
@@ -63,12 +67,11 @@ cat .langgraph/CLAUDE.md | grep -A30 "项目专属覆盖"
 
 | 你说 | AI 走 | 执行链 |
 |------|------|--------|
-| "解释这段代码" | 路径 A：琐碎 | 直接回答，不走工作流 |
-| "审计项目" | 路径 B：运维 | Skill → analyze → 计划 → 确认 |
-| "调用 API 批量操作" | 路径 C：平台 | Skill → 计划 → 逐步执行 |
-| "实现新功能" | 路径 D：编码 | Skill → GitNexus → grill-with-docs → TDD |
-| "修这个 bug" | 路径 E：诊断 | diagnose → 重现 → 修复 → 回归 |
-| "设计架构方案" | 路径 F：规划 | Skill → analyze → 方案 → 确认 |
+| "解释这段代码" | 路径 A | 直接执行 |
+| "调用 API 批量操作" | 路径 C | Skill 加载 spec → classify → plan → execute |
+| "实现新功能" | 路径 D | Skill 加载 spec → classify → GitNexus → grill → plan → TDD → review |
+| "修这个 bug" | 路径 E | Skill(diagnose) 加载 spec → classify → 重现 → 修复 → 验证 |
+| "设计架构方案" | 路径 F | Skill 加载 spec → classify → analyze → 方案对比 |
 
 ## 不引入的项目
 
@@ -77,30 +80,38 @@ cat .langgraph/CLAUDE.md | grep -A30 "项目专属覆盖"
 ## 命令参考
 
 ```bash
-langgraph-cli init [--deep]           # 项目初始化（--force 强制刷新模板）
+langgraph-cli init [--deep]           # 项目初始化
 langgraph-cli analyze .               # 项目结构分析
 langgraph-cli review <文件>           # 并行安全+质量审查
-langgraph-cli pr                      # 生成 PR 描述
-langgraph-cli run workflow.yaml       # 执行工作流
+langgraph-cli run workflow.yaml       # 执行 YAML 工作流
 langgraph-cli remember "决策" -t "标签" # 长期记忆
 langgraph-cli recall "关键词"         # 记忆搜索
+langgraph-cli health                  # 全组件健康检查
 ```
 
 ## 架构
 
 ```
-路由门（6 条强制路径）
-  ├── A: 琐碎 → 自由
-  ├── B: 运维 → analyze → 计划
-  ├── C: 平台 → 工作流 YAML
-  ├── D: 编码 → grill-with-docs → TDD → review
-  ├── E: 诊断 → 闭环
-  └── F: 规划 → analyze → 方案
+收到任务
+  → Skill("langgraph-cli") 激活执行协议
+    → 读取 .langgraph/specs/task-router.yaml
+    → 锁定 classify → plan → execute → verify → done
+    → 每个状态有 {允许, 禁止, 工具分配, 产出要求}
+    → 自检清单注入每次回复末尾
+
+spec 目录（可复用规范）
+  ├── task-router.yaml      # 通用分类+分发
+  ├── platform-operation.yaml  # 路径 C
+  ├── code-implementation.yaml # 路径 D
+  ├── diagnose.yaml            # 路径 E
+  ├── design-planning.yaml     # 路径 F
+  └── ops-analysis.yaml        # 路径 B
 
 工具栈
-  ├── langgraph-cli（CLI 14 命令）
+  ├── langgraph-cli（CLI + 运行时）
   ├── OMEGA（自动长期记忆）
   ├── GitNexus（代码知识图谱）
+  ├── oh-my-claude（编排纪律、agents、hooks）
   └── Matt Pocock skills（13 个方法论）
 
 项目级 opt-in
@@ -108,14 +119,10 @@ langgraph-cli recall "关键词"         # 记忆搜索
       └── 无 .langgraph/ → 原生 Claude Code
 ```
 
-## 组件
+## 文档
 
-| 组件 | 用途 |
+| 文档 | 内容 |
 |------|------|
-| `langgraph-cli` | 项目分析、代码审查、YAML 工作流、记忆管理 |
-| OMEGA | 自动长期记忆，跨会话保持上下文 |
-| GitNexus | 代码知识图谱，context/impact 查询 |
-| Matt Pocock skills | grill-with-docs, TDD, diagnose 等 13 个方法论 |
-| 工作流 YAML | code-review, fix-bug, add-feature, api-batch |
-
-详见 [CLAUDE.md](CLAUDE.md)（AI 入口协议）和 [docs/TOOL-LAYERING.md](docs/TOOL-LAYERING.md)
+| [CLAUDE.md](CLAUDE.md) | AI 入口协议 |
+| [docs/TOOL-LAYERING.md](docs/TOOL-LAYERING.md) | 工具分层 + 去重 |
+| [docs/COEXISTENCE.md](docs/COEXISTENCE.md) | 多系统共存 + 冲突解决 |

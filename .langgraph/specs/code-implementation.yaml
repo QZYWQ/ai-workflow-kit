@@ -1,0 +1,64 @@
+# Code Implementation — 路径 D：编码实现
+# 匹配：新功能、修改业务逻辑、重构、添加模块
+spec:
+  name: code-implementation
+  version: "2.0"
+  extends: task-router
+  path: D
+  triggers: ["实现", "开发", "新功能", "重构", "写代码", "添加模块", "加功能", "修改代码", "写库"]
+
+states:
+  plan:
+    on_enter: "理解需求、查已有实现、设计方案。禁止编码。"
+    tools:
+      - skill: "grill-with-docs"
+        provides: [需求对齐, 术语收敛, CONTEXT.md/ADR 更新]
+        mode: "对话引擎——追问每个未解决分支"
+      - "gitnexus context <核心符号>"
+        provides: [已有实现检查, 调用关系]
+        when: "项目有 GitNexus"
+      - "langgraph-cli analyze ."
+        provides: [项目结构分析]
+    rules:
+      - "GITNEXUS MUST: 修改函数/类前必须跑 impact 分析"
+      - "HIGH/CRITICAL 风险 → 用户确认后才进入 implement"
+      - "grill-with-docs 完成前不进入 implement"
+    output: "设计文档(≤1页) | 受影响文件列表 | GitNexus impact 结果"
+    exit_when: "grill 所有分支解决 AND GitNexus 确认无已有实现 AND 无 HIGH 风险未解决"
+
+  implement:
+    on_enter: "按计划逐步骤实现。TDD: 测试→失败→实现→通过。"
+    tools:
+      - skill: "tdd"
+        provides: [test-first workflow, red-green-refactor]
+        flow: |
+          每步骤:
+            1. 写测试 → 验证失败
+            2. 最小实现 → 测试通过
+            3. 重构(仅当前步骤范围)
+            4. 标记 [✓ 步骤N/M]
+    rules:
+      - coding:
+          python: "4空格, snake_case, PascalCase, WHY注释(非WHAT)"
+          general: "最小变更, 手术式修改, 不主动重构无关代码"
+          security: "无命令注入/XSS/SQL注入/凭据泄露"
+      - "禁止: 跳过测试写实现, 一次写多个步骤, 实现不需要的抽象"
+      - "3行类似代码 > 1个过早抽象"
+      - "每步完成: 标记 [✓ N/M]"
+    output: "[✓ 1/M] [✓ 2/M] ... [✓ M/M]"
+
+  review:
+    on_enter: "审查变更的正确性和副作用。"
+    tools:
+      - "langgraph-cli review <变更文件>"
+        provides: [并行安全+质量审查]
+      - "gitnexus detect_changes"
+        provides: [受影响符号范围确认]
+      - "langgraph-cli pr"
+        provides: [PR描述生成]
+    rules:
+      - "P0 问题 → 回 implement"
+      - "影响超预期范围 → 回 implement"
+      - "验证: 测试通过、无凭据泄露、产出正确"
+    output: "审查报告 | 受影响符号 | PR 描述"
+    exit_when: "review PASS AND detect_changes 范围确认 AND 无 P0"

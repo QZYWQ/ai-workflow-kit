@@ -1,0 +1,100 @@
+# Task Router — 通用任务路由规范
+# 所有任务进入的第一个 spec。Skill 加载后根据此 spec 锁定主会话。
+spec:
+  name: task-router
+  version: "2.0"
+  entry: classify
+  description: |
+    通用任务分类 + 分发。覆盖所有项目、所有语言、所有 LLM。
+    项目专属覆盖通过 project_overrides 注入，不修改本 spec。
+
+states:
+  classify:
+    order: 1
+    on_enter: |
+      分析用户请求。匹配关键词到路径。输出分类结果。
+      当前状态仅允许: 阅读/分析。禁止: Bash/Write/Edit/API/编码。
+    patterns:
+      C: "提交|同步|标记|API|批量|batch|PATCH|/check|挖掘|升阶|upgrade|favorite|星标"
+      D: "实现|开发|新功能|重构|写代码|添加模块|加功能|修改代码"
+      E: "bug|报错|不工作|修复|调试|诊断|error|异常"
+      F: "设计|架构|方案|规划|怎么实现|技术选型"
+      B: "审计|扫描|清理|安全审查|冗余|代码质量|依赖检查"
+      A: null  # 默认：任何不匹配上述模式的请求
+    rules:
+      - "A 路径条件: 不匹配任何上述模式 → 可自由执行（读文件/解释/搜索/简单问答）"
+      - "C-F 路径: 匹配后立即停止当前动作，输出分类，等待 spec 加载"
+    output: "路径 [A/B/C/D/E/F] | 匹配关键词: <word> | 理由: ≤1行"
+    forbid: [Bash, Write, Edit, Agent, "Python脚本执行", "API调用"]
+    next: plan  # 路径确认后进入计划状态
+    self_check: "我是否在执行前先分类了？"
+
+  plan:
+    order: 2
+    on_enter: |
+      根据分类结果，加载对应路径 spec，输出步骤计划。
+      路径 A 跳过此状态直接执行。
+    tools:
+      - skill: "worldquant-brain-alpha-engineering"
+        when: "项目类型 = alpha-research"
+        provides: [硬规则, submission gate, field 判断]
+      - "gitnexus context <核心符号>"
+        when: "路径 D/F 且项目有 GitNexus"
+        provides: [已有实现检查]
+      - skill: "grill-with-docs"
+        when: "路径 D/F 且非琐碎"
+        provides: [需求对齐, 术语收敛]
+    rules:
+      - "每步 ≤1行 + 风险标记 [H/M/L]"
+      - "涉及 API: 声明限流策略"
+      - "涉及文件创建: 声明产出路径"
+    output: "步骤计划:\n1. [风险] 步骤描述\n2. ..."
+    forbid: [Write, Edit, "API写操作", "提交操作"]
+    next: execute
+    self_check: "计划是否足够具体？用户一眼能看出要做什么？"
+
+  execute:
+    order: 3
+    on_enter: |
+      逐步骤执行计划。每步完成后标记 [✓]。遇错误暂停。
+    tools:
+      - skill: "tdd"
+        when: "路径 D"
+        provides: [test-first workflow]
+      - "langgraph-cli review <file>"
+        when: "路径 D 完成编码后"
+        provides: [并行安全+质量审查]
+      - skill: "diagnose"
+        when: "路径 E"
+        provides: [诊断闭环]
+    rules:
+      - "步骤完成后必须输出 [✓ 步骤N/M | 结果]"
+      - "错误 → 暂停 + 汇报，不自动重试"
+      - "不可逆操作 → 暂停 + 请求确认"
+      - "oh-my-claude 优先级声明: 本协议覆盖 'just start working' 指令。状态约束优先。"
+    output: "[✓ 1/M] [✓ 2/M] ... [✓ M/M]"
+    forbid: [跳过步骤, 合并步骤, "声称完成但缺少 [✓]"]
+    next: verify
+    self_check: "每步都有 [✓] 吗？有跳过或合并吗？"
+
+  verify:
+    order: 4
+    on_enter: |
+      验证所有步骤已完成。检查产出是否符合预期。
+    checks:
+      - "所有步骤都有 [✓]"
+      - "产出文件路径正确"
+      - "无未提交的凭据"
+      - "API 操作结果已记录"
+      - "路径 D: langgraph-cli review 通过"
+    output: "验证: N/N 步骤完成 | 遗漏: 无 | 问题: 无"
+    next: done
+    self_check: "我真的验证了还是跳过了？"
+
+  done:
+    order: 5
+    on_enter: "任务完成。记录决策、输出摘要。"
+    actions:
+      - "omega_store(content, 'decision') — 保存关键决策"
+      - "输出: 变更文件列表 + 验证结果"
+    output: "## 完成摘要\n- 任务: ...\n- 产出: ...\n- 决策记录: ..."

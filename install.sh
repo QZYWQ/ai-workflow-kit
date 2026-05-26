@@ -80,5 +80,58 @@ cp "$SCRIPT_DIR/skills/langgraph-cli/SKILL.md" "$HOME/.claude/skills/langgraph-c
 grep -q '.local/bin' "$HOME/.zshrc" 2>/dev/null || \
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
 
-echo "✅ 完成。新项目: langgraph-cli init"
-echo "   注意：工作流是项目级 opt-in，仅在运行过 init 的目录生效"
+# ====== 9. 安装后验证 ======
+echo "→ 验证安装..."
+VERIFY_OK=0
+VERIFY_TOTAL=5
+
+# 9.1 langgraph-cli
+if [ -x "$HOME/.local/bin/langgraph-cli" ]; then
+    echo "  ✅ langgraph-cli"
+    VERIFY_OK=$((VERIFY_OK + 1))
+else
+    echo "  ❌ langgraph-cli 未安装到 ~/.local/bin/"
+fi
+
+# 9.2 langgraph-cli skill
+if [ -f "$HOME/.claude/skills/langgraph-cli/SKILL.md" ]; then
+    echo "  ✅ langgraph-cli skill"
+    VERIFY_OK=$((VERIFY_OK + 1))
+else
+    echo "  ❌ langgraph-cli skill 未注册到 ~/.claude/skills/"
+fi
+
+# 9.3 OMEGA
+if python3 -c "import omega" 2>/dev/null; then
+    echo "  ✅ OMEGA"
+    VERIFY_OK=$((VERIFY_OK + 1))
+else
+    echo "  ⚠ OMEGA not importable"
+fi
+
+# 9.4 GitNexus
+if command -v gitnexus &>/dev/null; then
+    echo "  ✅ GitNexus"
+    VERIFY_OK=$((VERIFY_OK + 1))
+else
+    echo "  ⚠ GitNexus not found"
+fi
+
+# 9.5 oh-my-claude
+if [ -d "$HOME/.claude/plugins/cache/oh-my-claude" ]; then
+    echo "  ✅ oh-my-claude"
+    VERIFY_OK=$((VERIFY_OK + 1))
+else
+    echo "  ⚠ oh-my-claude 未安装（在 Claude Code 中运行 /plugin install oh-my-claude@oh-my-claude）"
+fi
+
+echo "━━━━━━━━━━━━━━━━━━━━"
+echo "  验证: $VERIFY_OK/$VERIFY_TOTAL 通过"
+echo "━━━━━━━━━━━━━━━━━━━━"
+if [ $VERIFY_OK -lt $VERIFY_TOTAL ]; then
+    echo "  ⚠ 部分组件未安装。查看上方的安装指引。"
+fi
+echo ""
+echo "  新项目: langgraph-cli init --deep"
+echo "  健康检查: langgraph-cli health"
+echo "  共存说明: docs/COEXISTENCE.md"

@@ -1,35 +1,38 @@
-# 工具分层
+# 工具分层 v2
+
+## 架构
 
 ```
-理解层 → 计划层 → 编码层 → 审查层 → 执行层
-  │                                              │
-  └────────── 上下文层（全程）───────────────────┘
+收到任务 → classify（分类）→ plan（计划）→ execute（执行）→ verify（验证）
+               │                │               │               │
+          【理解层】       【计划层】        【编码层】       【审查层】
+               │                │               │               │
+          └───────────── 上下文层（全程）──────────────────────┘
 ```
 
-| 层 | 工具 | 对应路由路径 |
-|----|------|-------------|
-| 理解 | grill-with-docs, zoom-out | 路径 D/F |
-| 计划 | to-prd, langgraph-cli analyze | 路径 B/F |
-| 编码 | tdd, prototype, caveman | 路径 D |
-| 审查 | langgraph-cli review, oh-my-claude code-reviewer/validator | 路径 D |
-| 上下文 | langgraph-cli remember/recall, handoff, GitNexus | 全部 |
-| 执行 | langgraph-cli run (YAML), Agent() 并行 | 路径 C |
+## 按状态分配（由 spec 定义，Skill 注入）
 
-## 路由门规则（见 .langgraph/CLAUDE.md）
+| 状态 | 可用 skill | 可用 CLI | 可用 agent |
+|------|-----------|---------|-----------|
+| classify | 无 | 无 | 无 |
+| plan | grill-with-docs, worldquant-brain-alpha-engineering | analyze, context | Explore, librarian, advisor |
+| execute | tdd, diagnose | review, test, impact | general-purpose, oh-my-claude:code-reviewer |
+| verify | verify | detect_changes, pr | oh-my-claude:validator, oh-my-claude:security-auditor |
+| 全程 | langgraph-cli remember/recall, handoff, GitNexus, OMEGA | | |
 
-路径 A：琐碎任务 → 自由发挥，不走工作流
-路径 B：运维分析 → Skill("langgraph-cli") → analyze → 计划 → 确认
-路径 C：平台操作 → Skill("langgraph-cli") → run api-batch.yaml 或声明计划
-路径 D：编码实现 → TDD + GitNexus + review
-路径 E：故障诊断 → diagnose 闭环
-路径 F：设计规划 → analyze → 方案 → 确认
+## 工具去重
 
-## 两阶段协议
-
-【阶段1】理解 — grill-with-docs 优先，暂停 ultrawork "不问"
-【阶段2】执行 — grill 完成后 ultrawork 接管
+| 能力 | Matt Pocock | oh-my-claude | langgraph-cli | 优先 |
+|------|------------|-------------|--------------|------|
+| 需求对齐 | grill-with-docs | advisor | — | grill-with-docs |
+| 代码审查 | — | code-reviewer | `review <file>` | `langgraph-cli review` |
+| 计划审查 | grill-me | critic | — | critic（自动）|
+| 实现后验证 | verify | validator | `detect_changes` | validator + detect_changes（并行）|
+| TDD | tdd | — | `test <code>` | tdd skill |
+| 安全审查 | — | security-auditor | `review`（含安全）| 并行：两者都跑 |
+| 上下文记忆 | handoff | — | remember/recall | 三套互补 |
 
 ## 项目级 opt-in
 
 工作流仅在运行过 `langgraph-cli init` 的项目目录中生效。
-不引入的项目不受任何影响。
+不引入的项目不受影响。

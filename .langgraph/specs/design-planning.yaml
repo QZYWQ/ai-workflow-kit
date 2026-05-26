@@ -1,0 +1,26 @@
+# Design Planning — 路径 F：设计/规划
+# 匹配：架构设计、方案选择、技术决策、怎么实现
+spec:
+  name: design-planning
+  version: "2.0"
+  extends: task-router
+  path: F
+  triggers: ["设计", "架构", "方案", "规划", "怎么实现", "技术选型"]
+
+states:
+  plan:
+    on_enter: "理解现状、分析选项、输出方案。此状态结束后才可进入编码(路径 D)。"
+    tools:
+      - "langgraph-cli analyze ."
+        provides: [项目结构分析]
+      - "gitnexus context <核心域符号>"
+        when: "项目有 GitNexus"
+      - skill: "grill-with-docs"
+        provides: [需求对齐, 术语收敛, 决策记录]
+    rules:
+      - "必须考虑 ≥2 个方案及 tradeoffs"
+      - "每个方案: 适用性 + 成本 + 风险"
+      - "grill 追问每个未解决分支"
+      - "产出写入 docs/adr/ 或等价决策记录"
+    output: "## 方案对比\n| 方案 | 适用 | 成本 | 风险 |\n...\n## 推荐: ...\n## 下一步: 路径 D 实现"
+    exit_when: "决策明确 AND 用户确认"
