@@ -12,8 +12,8 @@ spec:
 
 states:
   # ── v2.4 NEW: preflight — 探索性技术验证 ──
-  # 动机: field health check / coverage query 等必须调用 API 才能获得
-  # plan 所需的信息。硬禁止 API 会导致"无数据做计划"的死锁。
+  # 动机: API schema 验证 / 数据可用性检查 等必须调用 API 才能获得
+  # plan 所需的信息。硬禁止 API 会导致"不知道 API 能不能用就开始做计划"的死锁。
   preflight:
     order: 1  # 在 classify 和 plan 之间
     on_enter: |
@@ -21,8 +21,8 @@ states:
       此状态不是正式执行——是信息收集。
     allow:
       - "GET 请求（只读 API）"
-      - "数据探索（Data Explorer / field search）"
-      - "覆盖率检查 / field health diagnostics"
+      - "数据模式探索（schema / endpoint 验证）"
+      - "可用性检查（coverage / rate-limit 探路）"
       - "读取已有配置 / 账户状态查询"
       - "Bash: 跑探索性 Python 脚本（API 只读操作）"
     forbid:
@@ -50,7 +50,7 @@ states:
       - "可逆优先: GET→PATCH→POST"
       - "不可逆操作(submit/delete)标 [H]"
       - "多步骤序列: 每个子阶段标注 expected 迭代数"
-      - "领域 skill（如 worldquant-brain-alpha-engineering）的知识约束并行生效——经济逻辑、sign-flip protocol、submission gate——作为计划的硬约束而非可选项"
+      - "领域 skill（如项目自有的业务规则 skill）的知识约束并行生效——业务逻辑、数据约束、hard rules——作为计划的硬约束而非可选项"
     output: "API 操作计划:\n1. [H/M/L] METHOD endpoint — 目的\n..."
     next: execute
     self_check: "计划是否基于 preflight 收集的事实而非假设?"
@@ -93,7 +93,7 @@ states:
       - target: verify
         condition: "所有步骤完成且不符合 iterate 条件"
       - target: analyze
-        condition: "结果需要诊断优化（Fitness 低于门槛/SubU 不足/SC pending）"
+        condition: "结果需要诊断优化（关键指标不达标/子集验证未通过/状态检查pending）"
     self_check: "错误处理用的是正确的分级吗？"
 
   # ── v2.4 NEW: analyze — 结果诊断后的再规划节点 ──
@@ -104,7 +104,7 @@ states:
     on_enter: "检查 execute 的结果，判断是否需要迭代优化。"
     allow:
       - "读取模拟结果"
-      - "分析指标（Sharpe/Fitness/TVR/SubU/SC）"
+      - "分析关键指标"
       - "诊断瓶颈"
       - "规划下一轮变体"
     forbid:
@@ -113,7 +113,7 @@ states:
     rules:
       - "瓶颈诊断: 哪个指标最先失败？→ 定向修复（不是盲扫参数）"
       - "最多 3 轮迭代（analyze→execute→analyze...）——之后强制 kill/branch"
-      - "领域 skill 的 stop conditions 优先: 自相关>0.95→branch, 不是 same-field polish"
+      - "领域 skill 的 stop conditions 优先: 相似度>阈值→换方向, 不是同参数微调"
       - "迭代理由必须 ≤2 行——不是'再试试'而是'因为 X 指标在 Y 阈值下, 用 Z 操作修复'"
     next:
       - target: execute
@@ -150,9 +150,9 @@ skill_composition:
   when_multiple_skills:
     rule: |
       路径 C 的 platform-operation spec 控制状态流程（how to execute）。
-      领域 skill（如 worldquant-brain-alpha-engineering）控制知识约束（what is valid）。
+      领域 skill（如项目自有的业务规则 skill）控制知识约束（what is valid）。
       两者并行加载，不互斥。
-  domain_skill_role: "知识约束层——经济逻辑、sign-flip protocol、submission gate、stop conditions。不对状态转换做门控。"
+  domain_skill_role: "知识约束层——业务规则、数据约束、stop conditions。不对状态转换做门控。"
   path_spec_role: "执行流程层——状态转换、错误处理、产出路由。不做领域判断。"
   conflict_resolution: |
     当领域 skill 的 stop condition 与 execute 的"继续"冲突时：

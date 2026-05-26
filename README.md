@@ -135,7 +135,7 @@ cat .langgraph/CLAUDE.md | grep -A30 "项目专属覆盖"
 | 项目专属 workflow | ❌ 检测不到 | ⚠️ 通用 api-batch.yaml 之外需要定制化 YAML |
 | 已有项目现有规则冲突 | ❌ 检测不到 | ⚠️ 路由门规则 vs 已有 CLAUDE.md/AGENTS.md 规则去重 |
 
-> 示例：一个 WorldQuant BRAIN 项目 init 后自动检测到了 API 客户端和凭证，但 `favorite: true` 字段格式限制、`/check` 端点限流规则、已提交 alpha 列表——这些都是手动补进项目专属覆盖区域的。
+> 示例：一个 SaaS 后端项目 init 后自动检测到了 Stripe API 客户端和 `.env` 凭证，但 Stripe 的幂等键格式、webhook 签名验证规则、费率限制策略——这些都是手动补进项目专属覆盖区域的。
 
 然后用 Claude Code 打开项目。AI 会读取路由规则，自动匹配任务类型到对应执行路径：
 
