@@ -36,6 +36,7 @@ states:
       - "完成每步: [✓ N/M]"
       - "DDD 与 TDD 分工: DDD 约束回答'这个类型是什么'(Entity/VO/Aggregate)——每类型标注一次；TDD 约束回答'这个功能对吗'(test→impl→refactor)——每步骤一次。DDD 不是 TDD 的替代，是 TDD 每步实现时的类型检查。禁止以 DDD 为理由跳过 TDD 步骤。"
       - "implement → review 回退上限: 3 次。第 3 次仍未通过 → 暂停+汇报根因，不等用户决策不继续。"
+      - "scope creep 检测: 如果实际变更范围 ≥ origin_plan_scope × 2(文件数或模块数)，暂停并输出 [SCOPE CREEP] 警告。建议: 1) 回 plan 重新评估 bdd-acceptance 是否需要更新 spec; 2) 检查 ddd-model 是否需要更新领域模型。用户可 override 继续。"
 
   review:
     on_enter: "审查变更的正确性+副作用。回退计数器: implement_retries=0。"

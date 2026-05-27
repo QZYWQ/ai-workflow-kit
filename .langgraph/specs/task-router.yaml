@@ -25,6 +25,40 @@ context_assessment:
     midstream:         # 半中间续接——有 handoff 或 OMEGA 上下文
       detect: "handoff 文件存在 || OMEGA 有活跃会话记录"
       behavior: "先恢复 handoff/OMEGA 状态. 在恢复的上下文上继续. 不重新 classify 已完成的部分"
+
+  # v2.7: 模式门控——项目模式覆盖工具 trigger 条件
+  # 某些工具的价值在"还没有 X 时帮你建立 X"，但 trigger 检查 X 是否存在 → 在空白项目中永远不触发
+  # 模式门控：当项目处于特定模式时，忽略工具的实体/模块数量门槛，强制激活
+  mode_gated_activation:
+    greenfield:
+      rationale: "空白项目没有实体、没有模块、没有 spec——但最需要这些。忽略 trigger 中的数量门槛。"
+      force_active:
+        - grill-with-docs    # 建立术语表+CONTEXT.md
+        - ddd-tenets         # 从零定义 Bounded Context + Aggregate + Entity
+        - bdd-acceptance     # 从零定义 Behavior Scenario + .feature
+        - ddd-model          # 创建初始 .langgraph/model.md
+      protocol: |
+        设计优先于实现。在 greenfield 模式下，plan 状态必须先完成设计闭环：
+        grill-with-docs(术语收敛) → ddd-tenets(领域建模) → bdd-acceptance(行为spec)
+        三者 exit 条件全部满足后，才进入 implement。
+        这不是可选的——空白项目没有代码可以"理解"，必须从设计开始。
+
+    brownfield_nodocs:
+      rationale: "有代码无文档——必须从代码反向提取领域模型。grill-with-docs 从可选升级为强制。"
+      force_active:
+        - grill-with-docs    # 可选→强制：有代码的项目必须建立术语表
+        - ddd-tenets         # 从代码推断 Entity/VO/Aggregate（即使新实体<3）
+      protocol: |
+        langgraph-cli-analyze 先跑(全局理解) → grill-with-docs 建立术语表
+        → ddd-tenets 从代码推断领域模型。三者结束后进入 implement。
+
+    brownfield_docs:
+      rationale: "已有文档——检查对齐即可。无强制升级。"
+      force_active: []  # 正常 trigger 条件
+
+    midstream:
+      rationale: "恢复会话——不重新触发设计工具。"
+      force_active: []  # 续接时维持上次的方法学激活状态
       override: |
         用户明确放弃续接时降级。
         触发词: "不管上次"|"新任务"|"先不管"|"另起"|"从头"|"新话题"|"换个任务"|"ignore previous"
@@ -258,7 +292,7 @@ tool_library:
     skill: "bdd-acceptance"
     provides: [行为验收 spec 生成, Gherkin .feature 文件]
     trigger:
-      must: "路径 D plan 完成 | 路径 D 新功能涉及用户可见行为 | 路径 D 跨模块交互(≥2模块)"
+      must: "路径 D plan 完成 | 路径 D 新功能涉及用户可见行为 | 路径 D 跨模块交互(≥2模块) | 路径 D implement 中变更范围扩大(scope creep)"
       skip: "纯内部重构(无行为变更) | 配置修改 | 文档更新"
     protocol: |
       从 plan 输出生成 Gherkin spec:
@@ -302,7 +336,7 @@ tool_library:
     cli: "npx tenets check"
     provides: [DDD 架构约束, 聚合/实体/值对象规则, 限界上下文边界]
     trigger:
-      must: "路径 F 设计阶段 | 路径 D 涉及新领域概念(≥3个新实体) | brownfield 项目首次建立领域模型"
+      must: "路径 F 设计阶段 | 路径 D 涉及新领域概念(≥3个新实体) | brownfield 项目首次建立领域模型 | 路径 E bug 涉及领域概念"
       skip: "纯 CRUD | 无新领域概念的单文件修改"
     protocol: |
       作为静态约束层加载, 不主动执行:
@@ -320,7 +354,7 @@ tool_library:
     cli: "langgraph-cli model"
     provides: [领域模型持久化, .langgraph/model.md 演进]
     trigger:
-      must: "路径 F design 完成 | 新领域概念引入 | grill-with-docs 更新了 CONTEXT.md 术语"
+      must: "路径 F design 完成 | 新领域概念引入 | grill-with-docs 更新了 CONTEXT.md 术语 | 路径 D implement 中引入 ≥1 新 Entity"
       skip: "无新领域概念 | 纯运维/诊断路径"
     protocol: |
       维护 .langgraph/model.md 作为活的领域模型:

@@ -190,9 +190,15 @@ class SimulationEngine:
         must_conditions = [c.strip() for c in must.split("|")]
         skip_conditions = [c.strip() for c in skip.split("|")]
 
-        # ── 特殊：grill-with-docs 在 greenfield 模式强制触发 ──
-        if tool_name == "grill-with-docs" and proj.mode == "greenfield":
-            return {"triggered": True, "reason": "must: greenfield 强制触发 (context_assessment)"}
+        # ── v2.7: 模式门控 —— 覆盖正常 trigger 条件 ──
+        greenfield_force = ["grill-with-docs", "ddd-tenets", "bdd-acceptance", "ddd-model"]
+        brownfield_nodocs_force = ["grill-with-docs", "ddd-tenets"]
+
+        if proj.mode == "greenfield" and tool_name in greenfield_force:
+            return {"triggered": True, f"reason": "must: mode_gated (greenfield 强制)"}
+        if proj.mode == "brownfield_nodocs" and tool_name in brownfield_nodocs_force:
+            return {"triggered": True, f"reason": "must: mode_gated (brownfield_nodocs 强制)"}
+        # midstream 和 brownfield_docs 无强制门控，走正常 trigger
 
         # 评估跳过条件
         for cond in skip_conditions:
