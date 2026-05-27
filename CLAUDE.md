@@ -51,3 +51,10 @@
 | DDD 工具链 | ddd-tenets（架构约束）、ddd-model（领域模型持久化）|
 
 详见 `docs/TOOL-LAYERING.md` 和 `docs/COEXISTENCE.md`
+
+## 开发历史
+
+所有架构决策和踩坑记录——新会话启动时建议浏览：
+- `docs/LESSONS-LEARNED.md` — 14 个已验证的陷阱（trigger 门槛、deconflict 虚设、prompt 级无牙等）
+- `docs/adr/001-multi-methodology-progressive-disclosure.md` — 核心架构决策
+- `git log --oneline` — 开发时间线

@@ -203,6 +203,7 @@ python3 tests/e2e/test-dynamic-activation.py          # 动态激活仿真（10 
 | [docs/TOOL-LAYERING.md](docs/TOOL-LAYERING.md) | 工具分配 + 去重规则 |
 | [docs/COEXISTENCE.md](docs/COEXISTENCE.md) | 多系统共存 + 优先级 |
 | [docs/adr/001-multi-methodology-progressive-disclosure.md](docs/adr/001-multi-methodology-progressive-disclosure.md) | ADR：架构决策记录 |
+| [docs/LESSONS-LEARNED.md](docs/LESSONS-LEARNED.md) | 踩坑全记录：14 个已验证的架构/实现陷阱 |
 
 ## 许可证
 
