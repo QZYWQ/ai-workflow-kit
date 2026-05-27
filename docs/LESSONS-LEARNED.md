@@ -1,6 +1,53 @@
 # Lessons Learned: Building a Multi-Methodology AI Workflow Kit
 
-从 v2.5 到 v2.6 的开发全程踩坑记录。每个问题都是真实撞上的，不是纸面推演。
+从 Alpha 研究项目中长出来的通用工作流，v2.0 到 v2.6 全程踩坑记录。
+每个问题都是真实撞上的，不是纸面推演。
+
+---
+
+## 零、起源：这不是设计出来的，是长出来的
+
+工作流并非在 `ai-workflow-kit` 仓库中从零设计。它最初在
+`/Users/zpdedn/Documents/project/Worldquantbrain` ——一个
+WorldQuant BRAIN alpha 研究项目中自然演化。
+
+### v2.0-v2.5：Worldquantbrain 时期（104 次提交）
+
+**痛点驱动**：Alpha 研究有三个刚性需求，通用 AI 编码助手无法满足：
+1. **API 操作不可逆**——提交 alpha 后无法撤回，必须有 preflight 验证
+2. **领域规则复杂**——alpha 有效性有 20+ 条硬规则（field 类型、sign-flip、数据覆盖率），AI 不知道
+3. **长任务跨会话**——batch mining 跑 2 小时，会话断了不知道做到哪
+
+**演化路径**：
+```
+原始状态: 60+ 脚本, main.py 入口, 无规则
+    ↓
+第 1 步: 加 AGENTS.md + CLAUDE.md（写规则）
+    ↓
+第 2 步: 规则太多 → 引入 langgraph-cli skill（路由）
+    ↓
+第 3 步: 路径 C 最常用 → platform-operation.yaml 优先完善（preflight+错误分级+循环）
+    ↓
+第 4 步: 需要领域规则 → skill composition 诞生（路径 spec + 领域 skill 并行）
+    ↓
+第 5 步: 好用 → 提取为 ai-workflow-kit（去 WorldQuant 特定用语，泛化）
+```
+
+**关键洞察**：
+- **Skill composition 是被发现的，不是被发明的**。路径 C 的 batch 操作需要 platform-operation spec 控制执行流程，但 alpha 的业务规则（"ts_rank 在季度数据上返回 ERROR 是预期行为"）不属于任何通用 spec。两个独立的 skill 并行加载是唯一解。
+- **路径 C 最成熟是有原因的**——它最先遇到真实痛点的极限压力（API 限流、不可逆操作、长任务）。路径 D/E/F 后来才跟进。
+- **Worldquantbrain 有 6 个 workflow，其中 2 个是自定义的**（batch-check.yaml, sync-account.yaml）——说明通用 workflow 覆盖 80%，但项目特有的 20% 需要自定义。
+
+### v2.5→v2.6：ai-workflow-kit 时期（本仓库）
+
+从 Worldquantbrain 提取后，进行了通用化改造：
+- 去掉 WorldQuant 特定用语（decontaminate）
+- 加入多方法学（BDD/DDD）
+- 加入动态激活（phase + methodology）
+- 加入模式门控（greenfield/brownfield）
+- 自托管开发（用工作流开发工作流本身）
+
+以下 14 个坑覆盖了从 Worldquantbrain 的原型阶段到 ai-workflow-kit 的通用化阶段。
 
 ---
 
