@@ -1,7 +1,7 @@
 # Lessons Learned: Building a Multi-Methodology AI Workflow Kit
 
-从 Alpha 研究项目中长出来的通用工作流，v2.0 到 v2.6 全程踩坑记录。
-每个问题都是真实撞上的，不是纸面推演。
+从 Alpha 研究项目中长出来的通用工作流，v2.0 到 v2.7-dev 全程踩坑记录。
+21 条已验证的陷阱，按发现时间排列。每个都是真实撞上的，不是纸面推演。
 
 ---
 
@@ -239,6 +239,85 @@ AGENTS.md 从 287 行减到 228 行。
 
 ---
 
+### 17. 13 个提交直接踩在 main 上——没有分支纪律
+
+**坑**：feature/bdd-ddd-methodology-integration 合并后，从模式门控修复到 agent 编排，
+连续 13 个 commit 全在 main 上。工作流提倡分支隔离 + worktree，自己却没遵守。
+
+**教训**：
+- main 是产品——存放 spec、skill、测试、文档，不受工作流自激活
+- 分支是开发环境——自托管、state.json、takeover、方法论激活全在分支上
+- 开发完成后合并到 main，运行时产物留在分支，不污染产品
+- **工作流自己都用不好的规则，不配要求用户遵守**
+
+**发现方式**：用户发现没有分支、没有 worktree。
+
+---
+
+### 18. 运行时产物泄漏到产品分支
+
+**坑**：`.langgraph/state.json` 在自托管开发时创建，跟着提交进了 main。
+这相当于编译器输出的 `.o` 文件进了源码仓库。
+
+**教训**：
+- `.langgraph/state.json` → 运行时，加 `.gitignore`
+- `.langgraph/specs/*.yaml` → 产品，进仓库
+- `.claude/worktrees/` → 开发环境，加 `.gitignore`
+- 区分"工作流的源代码"和"工作流运行时的产出"
+
+**发现方式**：用户指出 main 应该是纯净的。
+
+---
+
+### 19. GitNexus 对非代码项目完全盲区
+
+**坑**：GitNexus 索引了 377 节点 441 边，但 0 个执行流。YAML spec、Markdown 文档
+不算 code symbol，影响分析对 spec 文件返回 UNKNOWN。整个项目是 GitNexus 的盲区。
+
+**教训**：
+- GitNexus 专精代码——函数、类、方法的关系图谱
+- 非代码项目（spec 驱动、配置驱动、文档驱动）需要另一种图谱
+- `project-graph.yaml` 是补救：文件/决策/任务/能力节点，任何项目类型可用
+- 不要假设一个工具覆盖所有场景
+
+**发现方式**：`npx gitnexus analyze` 完成但查询返回空，FTS 索引报 read-only 错误。
+
+---
+
+### 20. install.sh 把第三方 skill 装进项目目录
+
+**坑**：`install.sh` 的 Matt Pocock skills 安装到 `$(pwd)/.agents/skills/`，
+在 Worldquantbrain 里这个目录被 `git add -A` 提交了（36 个文件，2198 行）。
+清理后又发现这些 skill 应该在 `~/.claude/skills/`（全局），不在项目里。
+
+**教训**：
+- 第三方依赖安装在全局（`~/.claude/`、`~/.local/`），不进项目仓库
+- `install.sh` 不应假设 `$(pwd)` 是目标项目
+- 所有外部工具来源在 README 中标注（GitHub/npm/pypi）
+- `.agents/` 加 `.gitignore`
+
+**发现方式**：提交 Worldquantbrain 的脏工作区时带上了 36 个 skill 文件。
+
+---
+
+### 21. 工作流开发工作流时，工作流不该同时在管自己
+
+**坑**：v2.6 开发期间，工作流在 main 上自激活——takeover 跑了、state.json 写了、
+methodology card 生成了。但这些是运行时行为，不是产品功能。main 既是"开发对象"
+又是"运行环境"，边界模糊。
+
+**教训**：
+- 工作流是工具——开发工具时，工具不应该在管开发者
+- main = 产品源码（spec 定义、skill、install）
+- worktree/branch = 开发环境（激活工作流、自托管、state.json）
+- 类比：你不会在编译器的源码目录里运行编译器来编译编译器自身
+- 正确做法：在 worktree 里自托管，main 保持纯净
+
+**发现方式**：用户指出"主线只能有工作流这套东西，但不接入工作流管，是纯净的，
+分支才是工作流自己辅助自己开发工作流"。
+
+---
+
 ## 五、什么做对了
 
 | 决策 | 为什么对 |
@@ -252,24 +331,25 @@ AGENTS.md 从 287 行减到 228 行。
 
 ## 六、仍然痛的地方
 
-| 痛点 | 为什么修不好 |
-|------|------------|
-| prompt 级约束无强制力 | 需要程序级 hook，超出当前架构 |
-| 20K token 协议税 | 需要按需注入 spec 文本，是下一层重构 |
-| phase 检测依赖文件结构信号 | 对某些项目类型（数据管道、嵌入式）不敏感 |
-| 复杂度税——新人上手慢 | 需要简化版安装流程，目前只有全量安装 |
-| spec 衰退——随时间过时 | 需要 CI 集成 validate-specs.py |
+| 痛点 | 状态 |
+|------|------|
+| prompt 级约束无强制力 | 架构天花板，v2.7 做程序级 hook |
+| 20K token 协议税 | 方法论按需注入已做，spec 文本按需注入待做 |
+| phase 检测依赖文件结构信号 | toolkit phase 已补，数据管道仍弱 |
+| GitNexus 对非代码项目盲区 | project-graph 已设计，运行时待实现 |
+| 工作流自身不遵守分支纪律 | 已修复：main 纯净，worktree 隔离 |
+| 第三方 skill 泄漏到项目仓库 | 已修复：全局安装 + .gitignore |
+| agent 编排缺少运行时 | agent-orchestration 已设计，待实现 |
+| project-graph 只有 spec 无运行时 | 待实现 `langgraph-cli graph` 命令 |
 
 ---
 
-## 七、v2.7 起点
+## 七、v2.7 进行中
 
-基于以上所有教训，v2.7 的核心命题：
+基于 21 条教训，v2.7 正在 `feature/project-graph-runtime` worktree 中开发：
 
-**从 prompt 级自律升级到工具级强制**
-
-具体方向：
-1. pre-commit hook 检查 forbid 违规
-2. CI 集成 validate-specs.py（spec 漂移自动报警）
-3. 按 methodlology 级别真正按需注入 spec 文本（off = 不注入上下文）
-4. 简化安装——区分"快速开始"和"完整部署"
+**核心命题：从 spec 到运行时**
+1. `langgraph-cli graph init/update/query` — project-graph 运行时
+2. agent-orchestration 运行时集成
+3. pre-commit hook 检查 forbid 违规
+4. CI 集成 validate-specs.py
