@@ -16,11 +16,12 @@ states:
       - oh-my-claude-advisor   # 复杂任务 gap 分析
       - bdd-acceptance         # trigger: plan 完成, 涉及用户可见行为 → 生成 .feature
       - ddd-tenets             # trigger: 新领域概念(≥3实体) → DDD 结构约束
+      - ddd-model              # trigger: ddd-tenets 完成后 → 持久化领域模型
     rules:
       - "gitnexus-context: 修改任何函数/类前 MUST 查"
       - "grill-with-docs 的 exit 条件满足前 → 不进入 implement"
-      - "工具执行顺序: grill-with-docs(术语收敛) → ddd-tenets(领域分类) → bdd-acceptance(行为spec)。后一步依赖前一步的产出。禁止并行或乱序。"
-      - "grill-with-docs exit → ddd-tenets exit → bdd-acceptance exit → 才可进入 implement"
+      - "工具执行顺序: grill-with-docs(术语收敛) → ddd-tenets(领域分类) → ddd-model(持久化模型) → bdd-acceptance(行为spec)。后一步依赖前一步的产出。禁止并行或乱序。"
+      - "grill-with-docs exit → ddd-tenets exit → ddd-model exit → bdd-acceptance exit → 才可进入 implement"
     output: "设计文档 | .feature文件 | 领域模型标注 | 工具库检查清单"
 
   implement:

@@ -57,7 +57,7 @@ context_assessment:
       - ddd-model
       protocol: '设计优先于实现。在 greenfield 模式下，plan 状态必须先完成设计闭环：
 
-        grill-with-docs(术语收敛) → ddd-tenets(领域建模) → bdd-acceptance(行为spec)
+        grill-with-docs(术语收敛) → ddd-tenets(领域建模) → ddd-model(持久化模型) → bdd-acceptance(行为spec)
 
         三者 exit 条件全部满足后，才进入 implement。
 
