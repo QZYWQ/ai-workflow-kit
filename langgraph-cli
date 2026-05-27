@@ -564,6 +564,210 @@ def _fill_project_section(info: dict) -> str:
     return "".join(lines)
 
 
+# ======================== project graph ========================
+graph_app = typer.Typer(help="项目知识图谱（任何项目类型可用）")
+app.add_typer(graph_app, name="graph")
+
+def build_graph(target: Path) -> dict:
+    """扫描项目构建知识图谱。返回 graph.json 兼容结构。"""
+    nodes = {"files": [], "decisions": [], "tasks": [], "phase": {}, "capabilities": []}
+    edges = []
+
+    # 1. 扫描文件
+    exts = {".yaml", ".yml", ".md", ".py", ".js", ".ts", ".json", ".sh", ".toml"}
+    skip_dirs = {".git", "node_modules", "__pycache__", ".venv", ".claude", "runs", "dist", ".agents"}
+    files_by_cluster = {}
+    for p in target.rglob("*"):
+        if p.is_file() and p.suffix in exts:
+            rel = str(p.relative_to(target))
+            # 用相对路径检查 skip_dirs，避免 worktree 路径中的 .claude 误杀
+            rel_parts = Path(rel).parts
+            if any(s in rel_parts for s in skip_dirs):
+                continue
+            cluster = rel_parts[0] if len(rel_parts) > 1 else "root"
+            files_by_cluster.setdefault(cluster, []).append(rel)
+
+    for cluster, files in sorted(files_by_cluster.items()):
+        for f in files:
+            nodes["files"].append({
+                "path": f, "type": Path(f).suffix, "cluster": cluster
+            })
+
+    # 2. 解析 spec extends 关系（edges）
+    specs_dir = target / ".langgraph" / "specs"
+    if specs_dir.is_dir():
+        for spec_file in specs_dir.glob("*.yaml"):
+            try:
+                import yaml
+                spec = yaml.safe_load(spec_file.read_text())
+                extends = spec.get("spec", {}).get("extends")
+                if extends:
+                    edges.append({
+                        "from": f".langgraph/specs/{spec_file.name}",
+                        "to": f".langgraph/specs/{extends}.yaml",
+                        "type": "depends_on"
+                    })
+            except:
+                pass
+
+    # 3. 解析 ADR
+    adr_dir = target / "docs" / "adr"
+    if adr_dir.is_dir():
+        for adr_file in sorted(adr_dir.glob("*.md")):
+            nodes["decisions"].append({
+                "title": adr_file.stem,
+                "status": "accepted",
+                "path": str(adr_file.relative_to(target))
+            })
+
+    # 4. 加载 state.json
+    state_file = target / ".langgraph" / "state.json"
+    if state_file.exists():
+        try:
+            state = json.loads(state_file.read_text())
+            for task in state.get("task_stack", []):
+                nodes["tasks"].append({"description": task, "status": "pending"})
+            if state.get("active_task"):
+                nodes["tasks"].append({"description": state["active_task"], "status": "active"})
+            nodes["phase"] = {"name": state.get("phase", "unknown")}
+            ms = state.get("methodology_state", {})
+            for mname, mlevel in ms.items():
+                nodes["capabilities"].append({
+                    "name": mname,
+                    "methodology": mname,
+                    "active": mlevel
+                })
+        except:
+            pass
+
+    # 5. 加载 methodology-activation
+    ma_file = target / ".langgraph" / "specs" / "methodology-activation.yaml"
+    if ma_file.exists():
+        try:
+            import yaml
+            ma = yaml.safe_load(ma_file.read_text())
+            for mname, mconf in ma.get("methodologies", {}).items():
+                tools = mconf.get("tools", [])
+                for tool in tools:
+                    if not any(c["name"] == tool for c in nodes["capabilities"]):
+                        nodes["capabilities"].append({
+                            "name": tool,
+                            "methodology": mname,
+                            "source": "methodology-activation"
+                        })
+        except:
+            pass
+
+    return {"nodes": nodes, "edges": edges,
+            "last_updated": datetime.now().isoformat()}
+
+@graph_app.command("init")
+def graph_init(directory: str = typer.Option(".", "--dir", "-d"),
+               output: Optional[str] = typer.Option(None, "--output", "-o"),
+               json_output: bool = typer.Option(False, "--json")):
+    """初始化项目知识图谱——扫描文件、spec关系、ADR、任务状态"""
+    target = Path(directory).resolve()
+    graph = build_graph(target)
+
+    nf = len(graph["nodes"]["files"])
+    nd = len(graph["nodes"]["decisions"])
+    nt = len(graph["nodes"]["tasks"])
+    nc = len(graph["nodes"]["capabilities"])
+    ne = len(graph["edges"])
+
+    out_path = Path(output) if output else target / ".langgraph" / "graph.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(graph, indent=2, ensure_ascii=False))
+
+    if json_output:
+        typer.echo(json.dumps({"graph": str(out_path), "nodes": nf+nd+nt+nc, "edges": ne}, ensure_ascii=False))
+    else:
+        typer.echo(f"✅ 图谱已创建: {out_path}")
+        typer.echo(f"   节点: {nf} 文件 + {nd} 决策 + {nt} 任务 + {nc} 能力 = {nf+nd+nt+nc}")
+        typer.echo(f"   边:   {ne} (spec extends)")
+
+@graph_app.command("update")
+def graph_update(directory: str = typer.Option(".", "--dir", "-d"),
+                 json_output: bool = typer.Option(False, "--json")):
+    """增量更新图谱——检测文件变更后重建"""
+    target = Path(directory).resolve()
+    gf = target / ".langgraph" / "graph.json"
+    if not gf.exists():
+        typer.echo("图谱不存在。请先运行 graph init", err=True)
+        raise typer.Exit(1)
+
+    old = json.loads(gf.read_text())
+    new = build_graph(target)
+
+    old_files = {f["path"] for f in old["nodes"]["files"]}
+    new_files = {f["path"] for f in new["nodes"]["files"]}
+    added = new_files - old_files
+    removed = old_files - new_files
+
+    gf.write_text(json.dumps(new, indent=2, ensure_ascii=False))
+
+    if json_output:
+        typer.echo(json.dumps({"added": len(added), "removed": len(removed)}, ensure_ascii=False))
+    else:
+        typer.echo(f"✅ 图谱已更新: +{len(added)}/-{len(removed)} 文件")
+
+@graph_app.command("query")
+def graph_query(question: str = typer.Argument(..., help="查询: depends:<file> | tasks | capabilities | decisions"),
+                directory: str = typer.Option(".", "--dir", "-d"),
+                json_output: bool = typer.Option(False, "--json")):
+    """查询项目图谱——影响分析、任务状态、能力发现"""
+    target = Path(directory).resolve()
+    gf = target / ".langgraph" / "graph.json"
+    if not gf.exists():
+        typer.echo("图谱不存在。请先运行 graph init", err=True)
+        raise typer.Exit(1)
+
+    graph = json.loads(gf.read_text())
+    nodes = graph["nodes"]
+    edges = graph["edges"]
+
+    q = question.strip().lower()
+
+    if q.startswith("depends:"):
+        # 影响分析: 哪些文件依赖目标文件
+        target_file = q.split(":", 1)[1].strip()
+        impacted = [e["from"] for e in edges if target_file in e.get("to", "")]
+        if json_output:
+            typer.echo(json.dumps({"target": target_file, "impacted": impacted}, ensure_ascii=False))
+        else:
+            typer.echo(f"依赖于 {target_file} 的文件:")
+            for f in impacted:
+                typer.echo(f"  {f}")
+            if not impacted:
+                typer.echo("  (无)")
+
+    elif q == "tasks":
+        for t in nodes.get("tasks", []):
+            typer.echo(f"  [{t.get('status', '?')}] {t['description']}")
+
+    elif q == "capabilities":
+        for c in nodes.get("capabilities", []):
+            active = c.get("active", "?")
+            typer.echo(f"  [{active}] {c['name']} ({c.get('methodology', '?')})")
+
+    elif q == "decisions":
+        for d in nodes.get("decisions", []):
+            typer.echo(f"  [{d.get('status', '?')}] {d['title']}")
+
+    elif q == "stats":
+        nf = len(nodes.get("files", []))
+        nd = len(nodes.get("decisions", []))
+        nt = len(nodes.get("tasks", []))
+        nc = len(nodes.get("capabilities", []))
+        ne = len(edges)
+        typer.echo(f"节点: {nf} 文件 + {nd} 决策 + {nt} 任务 + {nc} 能力 = {nf+nd+nt+nc}")
+        typer.echo(f"边:   {ne}")
+        for e in edges:
+            typer.echo(f"  {e['from']} → {e['to']}")
+
+    else:
+        typer.echo(f"支持的查询: depends:<file> | tasks | capabilities | decisions | stats")
+
 # ======================== init ========================
 @app.command()
 def init(directory: str = typer.Option(".","--dir","-d"),
