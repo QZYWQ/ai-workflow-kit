@@ -4,3 +4,4 @@ __pycache__/
 .agents/
 .gitnexus
 .claude/
+.langgraph/state.json
