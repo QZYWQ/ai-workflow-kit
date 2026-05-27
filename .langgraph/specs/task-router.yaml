@@ -1,9 +1,10 @@
 # Task Router — 通用任务路由 + 全工具库
 spec:
   name: task-router
-  version: "2.5"
+  version: "2.6"
   entry: assess
   notes: |
+    v2.6: +bdd(acceptance/evaluate/reconcile) +ddd(tenets/model) — BDD/DDD methodology integration
     v2.5: +intelligent-takeover(四维感知+takeover_card+hot/warm/cold恢复)
     v2.4: +error_levels(exp/rate/sys) +skill_composition +multi_step_flow
 
@@ -63,6 +64,7 @@ tool_library:
     exit: "所有分支解决 AND 术语收敛 AND 设计决策已记录"
     deconflict:
       vs_grill_me: "grill-with-docs 检查文档+写文档, grill-me 仅纯策略逻辑 stress-test, 不检查文档"
+      vs_ddd_tenets: "grill-with-docs 收敛术语(叫什么), ddd-tenets 约束结构(是什么类型)。互补"
 
   diagnose:
     skill: "diagnose"
@@ -110,6 +112,8 @@ tool_library:
       must: "路径 D 编码完成 | 提交 PR 前 | 用户说 'verify'/'验证'"
     protocol: "运行测试→检查产出→对比计划→确认无遗漏。不是自己说 'done'——要有证据。"
     exit: "测试 PASS AND 产出匹配计划 AND 无未提交变更破坏性副作用"
+    deconflict:
+      vs_bdd_evaluate: "verify 验证'测试通过+产出匹配', bdd-evaluate 验证'行为符合 spec'。互补"
 
   grill-me:
     skill: "grill-me"
@@ -164,6 +168,12 @@ tool_library:
       must: "路径 D: 编码完成后立即 | 提交前 final check"
     deconflict:
       vs_oh_my_claude_code_reviewer: "review = 当前会话即时同步审查, code-reviewer = PR diff 全面审查(agent 委托)"
+
+  langgraph-cli-pr:
+    cli: "langgraph-cli pr"
+    provides: [PR 描述生成]
+    trigger:
+      must: "编码完成后, 准备提交 PR 前"
 
   langgraph-cli-run:
     cli: "langgraph-cli run <workflow.yaml>"
@@ -243,6 +253,86 @@ tool_library:
       vs_langgraph_cli_remember: "OMEGA = 自动跨会话持久化, langgraph-cli remember = 用户明确'记住这个'的显式保存"
       vs_handoff: "OMEGA = 长期, handoff = 单会话→下一会话的短期快照"
 
+  # ── BDD 行为驱动开发 ──
+  bdd-acceptance:
+    skill: "bdd-acceptance"
+    provides: [行为验收 spec 生成, Gherkin .feature 文件]
+    trigger:
+      must: "路径 D plan 完成 | 路径 D 新功能涉及用户可见行为 | 路径 D 跨模块交互(≥2模块)"
+      skip: "纯内部重构(无行为变更) | 配置修改 | 文档更新"
+    protocol: |
+      从 plan 输出生成 Gherkin spec:
+      Feature → Scenario → Given-When-Then
+      每个 scenario 对应一个可验证的用户行为。
+      禁止: 猜测行为 | 跳过 corner case | spec 与 plan 不一致
+    exit: ".feature 文件存在 AND 覆盖所有 plan 中声明的行为 AND 术语与 grill-with-docs 收敛结果一致"
+    deconflict:
+      vs_grill_with_docs: "grill-with-docs 收敛术语, bdd-acceptance 用收敛后的术语写可执行 spec。顺序: grill-with-docs exit → bdd-acceptance start"
+
+  bdd-evaluate:
+    skill: "bdd-evaluate"
+    provides: [行为验证, Gherkin spec 对照, 行为覆盖检查]
+    trigger:
+      must: "bdd-acceptance 生成了 .feature 文件 | 路径 D review 状态"
+      skip: "无 .feature 文件的项目"
+    protocol: |
+      对照 .feature 文件逐条验证:
+      每个 Scenario 的 Given-When-Then 是否都被实现覆盖?
+      行为是否与 spec 一致（不是"看起来差不多"）?
+      失败 → 标注未覆盖的 scenario, 回 implement
+    exit: "所有 scenario PASS AND 无遗漏行为"
+    deconflict:
+      vs_verify: "verify 检查'测试通过+产出匹配', bdd-evaluate 检查'行为符合 spec'。互补, 不冲突"
+
+  bdd-reconcile:
+    skill: "bdd-reconcile"
+    provides: [需求变更级联, spec 一致性维护]
+    trigger:
+      must: "用户说'需求变了'/'改成' | 路径 D plan 阶段发现与已有 spec 冲突 | 路径 D implement 中行为与 spec 偏离"
+    protocol: |
+      需求变更 → 追溯到最早受影响的 spec → 级联更新。
+      从变更点开始, 向下游传播:
+      spec → plan → task → code → test。
+      每层标注 [RECONCILE] 变更范围。
+      禁止: 直接改代码跳过 spec 更新 | 只改 spec 不追溯下游
+    exit: "变更链完整 AND 所有受影响层已更新 AND 无断裂引用"
+
+  # ── DDD 领域驱动设计 ──
+  ddd-tenets:
+    cli: "npx tenets check"
+    provides: [DDD 架构约束, 聚合/实体/值对象规则, 限界上下文边界]
+    trigger:
+      must: "路径 F 设计阶段 | 路径 D 涉及新领域概念(≥3个新实体) | brownfield 项目首次建立领域模型"
+      skip: "纯 CRUD | 无新领域概念的单文件修改"
+    protocol: |
+      作为静态约束层加载, 不主动执行:
+      1. takeover rules 层自动加载 tenets 规则文件
+      2. plan 状态: 设计产出必须标注 Aggregate Root / Entity / Value Object 分类
+      3. implement 状态: 新建类/结构体时自检——这是 Entity 还是 VO? 是否跨了 Bounded Context?
+      4. 违反 DDD 规则 → [DDD VIOLATION] marker, 暂停并建议修正
+    exit: "设计产出有明确的领域分类 AND 无 DDD VIOLATION"
+    deconflict:
+      vs_grill_with_docs: "grill-with-docs 负责术语(叫什么), ddd-tenets 负责结构(是什么类型, 属于哪个边界)"
+      vs_bdd_acceptance: "ddd-tenets 先(领域分类), bdd-acceptance 后(行为spec)。bdd 依赖 ddd 的 Aggregate 边界来组织 scenario"
+      vs_tdd: "ddd-tenets 负责类型分类(每实体一次), tdd 负责行为验证(每步骤一次)。不冲突——分类先于验证"
+
+  ddd-model:
+    cli: "langgraph-cli model"
+    provides: [领域模型持久化, .langgraph/model.md 演进]
+    trigger:
+      must: "路径 F design 完成 | 新领域概念引入 | grill-with-docs 更新了 CONTEXT.md 术语"
+      skip: "无新领域概念 | 纯运维/诊断路径"
+    protocol: |
+      维护 .langgraph/model.md 作为活的领域模型:
+      - Bounded Context 列表 + 各自职责
+      - Aggregate Root → Entity → Value Object 关系
+      - 跨 Context 集成关系(Partnership/Shared Kernel/Customer-Supplier/Conformist)
+      每次 design 完成后增量更新, 不重写。
+    exit: "model.md 已更新 AND 与 CONTEXT.md 术语一致 AND 与 ADR 决策一致"
+    deconflict:
+      vs_CONTEXT_md: "CONTEXT.md = 术语表+项目约定, model.md = 领域结构+关系。互补"
+      vs_ADR: "ADR = 单次决策记录, model.md = 当前聚合状态"
+
 # ═══════════════════════════════════════════
 # 状态机
 # ═══════════════════════════════════════════
@@ -255,7 +345,7 @@ states:
       **禁止: Bash/Write/Edit/编码/API。此状态不是执行，是感知。**
       **v2.5: 接管优先——hot recovery 会跳过后续 assess+classify，直接恢复任务。**
     takeover_first: |
-      执行 intelligent-takeover.yaml 的四层感知（state → context → health → rules）。
+      执行 intelligent-takeover.yaml 的五层感知（state → context → health → rules → phase）。
       输出 Takeover Card 后，根据 recovery 级别路由:
         hot  → 注入 Takeover Card，跳过 assess+classify，直接恢复任务栈
         warm → 从 handoff/OMEGA 重建上下文，然后进入 classify
@@ -297,8 +387,19 @@ states:
         - 先读 handoff 文件/OMEGA 上下文, 恢复未完成任务列表
         - classify 基于续接的任务状态, 不是用户当前请求
         - 已完成的门 [classify ✓] 不需重复
+    methodology_eval: |
+      接管完成后, 根据 intelligent-takeover 的 phase 检测结果,
+      加载 methodology-activation.yaml, 生成 Methodology Card:
+      1. 查 phases.{phase}.default_activation → 设定初始激活级别
+      2. 查 complexity_signals → 是否触发建议升级
+      3. 输出 Methodology Card (注入后续所有状态的上下文)
+      4. 用户可通过 "激活/关闭/简化 + 方法论名" 随时切换
+      5. 状态转换时: assess/classify 阶段所有方法论 off,
+         plan 阶段恢复方法论激活, done 阶段全部 off
     output: |
       项目模式: [greenfield | brownfield_docs | brownfield_nodocs | midstream]
+      开发阶段: [prototype | mvp | production | maintenance | unknown]
+      方法学: TDD=active|passive|off BDD=active|passive|off DDD=active|passive|off
       证据: <CONTEXT.md 存在 / 文件数 N / handoff 存在 / OMEGA 有记录>
     forbid: [Bash, Write, Edit, Agent, Python执行, API调用]
     next: classify
@@ -318,6 +419,7 @@ states:
       A: null
     rules:
       - "A: 不匹配任何模式 → 自由执行"
+      - "A 护栏: 若任务涉及 Write/Edit/Bash 写操作 → 禁止走 A。重新检查是否有匹配路径。A 仅限 Read/解释/问答(无副作用)。"
       - "C-F: 匹配后立即停止当前动作, 输出分类, 加载 spec"
     output: "路径 [A/B/C/D/E/F] | 匹配: <关键词> | 理由: ≤1行"
     forbid: [Bash, Write, Edit, Agent, Python执行, API调用]
@@ -326,17 +428,19 @@ states:
 
   plan:
     order: 2
-    on_enter: "加载对应路径 spec, 查工具库触发条件, 输出步骤计划。"
+    on_enter: "加载对应路径 spec, 查工具库触发条件, 输出步骤计划。可用的工具仅限于 Methodology Card 中 available_tools。"
     tools: [grill-with-docs, worldquant-brain-alpha-engineering, gitnexus-context, langgraph-cli-analyze, oh-my-claude-advisor]
     rules:
       - "每步 ≤1行 + 风险标记 [H/M/L]"
       - "涉及 API: 声明限流"
       - "涉及文件创建: 声明路径"
       - "工具库中标记 'MUST NOT SKIP' 的: 禁止跳过"
+      - "仅使用 Methodology Card 中 available_tools 列表内的工具。inactive_tools 中的工具视为不可用, 禁止调用。"
+    methodology_override: "用户可以随时说 '激活/关闭 + 方法论名' 来覆盖当前激活状态。本次任务有效。"
     output: "步骤计划:\n1. [H/M/L] 步骤描述\n2. ..."
     forbid: [Write, Edit, API写操作, 提交操作]
     next: execute
-    self_check: "每个引用的工具我都检查了工具库的 trigger 条件吗?"
+    self_check: "每个引用的工具都在 Methodology Card 的 available_tools 中吗?"
 
   execute:
     order: 3
@@ -349,7 +453,7 @@ states:
       - "不可逆操作 → 暂停+请求确认"
       - "覆盖 oh-my-claude 'just start working'"
     output: "[✓ 1/M] [✓ 2/M] ... [✓ M/M]"
-    forbid: [跳过步骤, 合并步骤, 声称完成但缺[✓]]
+    forbid: ["跳过步骤", "合并步骤", "声称完成但缺[✓]"]
     next: verify
 
   verify:

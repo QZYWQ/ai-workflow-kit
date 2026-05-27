@@ -1,7 +1,9 @@
-# AI Workflow Kit v2.5
+# AI Workflow Kit v2.6
 
 面向 Claude Code 的通用 AI 辅助开发工作流套件。基于 **spec 状态机 + Skill 运行时**。
+多方法学支持：**TDD**（测试驱动）、**BDD**（行为驱动）、**DDD**（领域驱动）。
 
+> v2.6 变化：+BDD（acceptance/evaluate/reconcile）+DDD（tenets/model）— 多方法学协同
 > v2 核心变化：Skill("langgraph-cli") 现在是执行协议运行时，不是权限声明。加载后锁定主会话到状态机中。
 > **共存**：协议激活时覆盖 oh-my-claude 的 "just start working"。任务完成后 oh-my-claude 恢复默认。
 > 路由规则见 `.langgraph/CLAUDE.md`（紧凑决策树）和 `.langgraph/specs/`（可复用规范）。
@@ -45,5 +47,7 @@
 | GitNexus | 代码知识图谱 |
 | oh-my-claude | 编排纪律、agents、hooks |
 | Matt Pocock skills | 方法论（grill/tdd/diagnose 等）|
+| BDD 工具链 | bdd-acceptance（spec 生成）、bdd-evaluate（行为验证）、bdd-reconcile（需求变更级联）|
+| DDD 工具链 | ddd-tenets（架构约束）、ddd-model（领域模型持久化）|
 
 详见 `docs/TOOL-LAYERING.md` 和 `docs/COEXISTENCE.md`

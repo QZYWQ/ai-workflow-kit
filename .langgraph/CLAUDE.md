@@ -57,6 +57,14 @@
 
 加载对应 spec 后各状态的工具/规则/产出要求由 spec 定义。
 
+## 方法学支持
+
+| 方法学 | 工具 | 激活路径 |
+|--------|------|---------|
+| **TDD** | tdd skill（red-green-refactor）| 路径 D/E |
+| **BDD** | bdd-acceptance（spec 生成）、bdd-evaluate（行为验证）、bdd-reconcile（变更级联）| 路径 D |
+| **DDD** | ddd-tenets（架构约束）、ddd-model（领域模型持久化）| 路径 D/F |
+
 ## 通用约束
 
 - 优先使用已有代码 → GitNexus 确认无重复

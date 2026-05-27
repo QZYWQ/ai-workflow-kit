@@ -1,14 +1,14 @@
-# Intelligent Takeover — 智能接管协议 v1.0
+# Intelligent Takeover — 智能接管协议 v1.1
 # 每次会话启动时运行一次，输出全局感知结果。
 # 独立于路由路径，在 classify 前执行。
 spec:
   name: intelligent-takeover
-  version: "1.0.1"
+  version: "1.1"
   entry: sense
   priority: highest  # 在 task-router assess 之前执行
 
 # ═══════════════════════════════════════════
-# 四维感知
+# 五维感知（v1.1: +phase 开发阶段检测）
 # ═══════════════════════════════════════════
 states:
   sense:
@@ -18,7 +18,11 @@ states:
       - context  # 上次会话上下文
       - health   # 工具链健康
       - rules    # 约束规则
+      - phase    # 开发阶段 (v1.1)
     output: takeover_card  # 一张卡，后面所有路径引用
+    methodology_activation: |
+      接管完成后, 根据 phase + complexity signals 生成 Methodology Card。
+      路径 spec 在 plan 状态引用 Methodology Card 决定哪些工具可用。
 
 # ── Layer 1: State — 项目现在处于什么状态 ──
 state:
@@ -88,11 +92,45 @@ rules:
     - ".langgraph/specs/"
     - "项目下 *.skill.md（如有）"
   extraction:
-    hard_rules:    "MUST/MUST NOT/禁止/硬性/Do not/Never" 开头的规则
+    hard_rules:    "MUST/MUST NOT/禁止/硬性/Do not/Never 开头的规则"
     domain_terms:  "项目特有的领域术语表（优先从 CONTEXT.md, 其次 README.md）"
     stop_conditions: "什么情况下应该停止/切换方向"
     output_paths:  "产出文件应该放在哪里"
   output: "hard_rules=N, domain_terms=[...], output_root=..., rules_sources=[...]"
+
+# ── Layer 5: Phase — 开发阶段检测 (v1.1) ──
+phase:
+  sources:
+    - "git tag --sort=-creatordate | head -3"
+    - "ls .github/workflows/ .gitlab-ci.yml 2>/dev/null"
+    - "项目文件数"
+    - "用户描述中的 原型/MVP/生产/维护 等关键词"
+    - "最近 30 天 git log --diff-filter=A --name-only 的新增文件占比"
+  dimensions:
+    toolkit:
+      detect: "项目是库/CLI/工具/SDK(有package.json或setup.py等打包配置, 无UI/Web服务/API)"
+      markers: ["用户说 库/工具/CLI/SDK/package", "项目是开发工具链的一部分"]
+    prototype:
+      detect: "文件<20 AND 无CI AND git tag为空 AND 提交<5"
+      markers: ["用户说 原型/prototype/快速验证/试试"]
+    mvp:
+      detect: "文件20-100 AND 有基本测试"
+      markers: ["CI 配置存在", "无生产部署配置", "无 git tag"]
+    production:
+      detect: "有CI/CD pipeline AND git tag存在 AND 有部署配置"
+      markers: ["生产环境配置", "监控/告警", "用户说 生产/正式"]
+    maintenance:
+      detect: "文件>100 AND 最近30天新增文件<5% AND 提交以fix为主"
+      markers: ["用户说 维护/修bug/小改动"]
+    unknown:
+      detect: "无法匹配上述"
+  output: "phase=toolkit|prototype|mvp|production|maintenance|unknown"
+  refresh_trigger:
+    - "首次 release (git tag 出现)"
+    - "CI/CD 配置新增"
+    - "项目文件数增长 >200%"
+    - "用户说 进入生产/发布版本"
+    - "每个新会话开始时"
 
 # ═══════════════════════════════════════════
 # 感知输出: Takeover Card
@@ -105,15 +143,32 @@ takeover_card:
     - integrity: clean|dirty|broken
     - recovery:  hot|warm|cold
     - health:    full|degraded|broken
+    - phase:     toolkit|prototype|mvp|production|maintenance|unknown
     - rules:     N hard rules loaded
     - active_task: <from state.json>
     - recommendation: <一句话建议下一步>
 
   # 这张卡注入到后续所有路径的上下文中
-  # 路径 spec 在 plan 状态引用 takeover_card 而非重新探测
+  # 路径 spec 在 plan 状态引用 takeover_card + methodology_card 而非重新探测
 
-# ═══════════════════════════════════════════
-# 接管后的行为路由
+methodology_card:
+  format: |
+    ## Methodology Card
+    phase: toolkit|prototype|mvp|production|maintenance
+    tdd: active|passive|off
+    bdd: active|passive|off
+    ddd: active|passive|off
+    verify_full: active|passive|off
+    available_tools: [当前可用的工具列表]
+    inactive_tools: [当前不可用的工具列表]
+    suggestions: [auto-detect 建议升级的 methodology]
+  usage: |
+    注入到路径 spec 上下文。路径 spec 的 tools_from_library 只包含
+    methodology_card.available_tools 中的工具。不可用工具视为不存在。
+  generation: |
+    根据 methodology-activation.yaml 的 phases.{phase}.default_activation
+    生成默认激活级别。然后检查 complexity_signals 是否有建议升级。
+    输出 Methodology Card, 等待用户确认(auto_suggest 的升级)。
 # ═══════════════════════════════════════════
 behavior:
   hot_recovery:
@@ -135,21 +190,50 @@ behavior:
     condition: "integrity=broken OR health=broken"
     action: "进入诊断模式——先修复基础设施，再处理用户任务。"
 
+  state_aware:
+    condition: "状态机进入新状态"
+    action: |
+      根据当前状态动态调整 methodology 激活级别:
+      - assess/classify: 所有 methodology off(不需要)
+      - plan: 根据 phase + complexity 评估, 恢复方法论激活
+      - implement: TDD active, DDD active(约束层), BDD 保持 plan 时的级别
+      - verify: BDD active(如有 .feature), verify_full active(如生产阶段)
+      - done: 所有 methodology off
+  user_toggle:
+    commands:
+      activate: "用户说 激活BDD/开启DDD/启用完整验证 → 目标methodology→active"
+      deactivate: "用户说 关闭DDD/跳过BDD/简化验证 → 目标methodology→off或passive"
+      temporary: "用户说 这次不用TDD → 仅当前任务降级, 下次任务恢复默认"
+      show: "用户说 当前激活了哪些方法论 → 输出 Methodology Card"
+  auto_suggest:
+    trigger: "complexity_signal 被检测到"
+    behavior: "不自动升级——输出 [METHODOLOGY SUGGEST] 等待用户确认"
+    cooldown: "建议被拒绝后, 30分钟内不再建议相同升级"
+  phase_transition:
+    trigger: "phase_transition signal 被检测到"
+    behavior: "自动更新所有 methodology 到新阶段默认级别, 输出 Phase Transition Card"
 # ═══════════════════════════════════════════
 # state.json — 项目状态描述符（最小 schema）
 # ═══════════════════════════════════════════
 state_descriptor:
   path: ".langgraph/state.json"
   schema:
-    active_task: "string | null"        # 当前活跃任务描述
-    task_stack: "[string]"             # 任务栈（支持嵌套）
-    current_path: "A|B|C|D|E|F|null"   # 当前所在路径
-    current_state: "string | null"      # 当前所在状态
-    last_decision: "string | null"      # 最近一次关键决策
+    active_task: "string | null"
+    task_stack: "[string]"
+    current_path: "A|B|C|D|E|F|null"
+    current_state: "string | null"
+    last_decision: "string | null"
+    phase: "toolkit|prototype|mvp|production|maintenance|unknown"
+    methodology_state:
+      tdd: "active|passive|off"
+      bdd: "active|passive|off"
+      ddd: "active|passive|off"
+      verify_full: "active|passive|off"
     last_updated: "ISO8601"
-    outputs_pending_verification: "[string]"  # 待验证的产出文件列表
+    outputs_pending_verification: "[string]"
   update_triggers:
     - "路径切换时"
     - "关键决策后"
     - "产出文件创建后"
     - "done 状态时"
+    - "phase 变更或 methodology 级别变更时"
