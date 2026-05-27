@@ -152,6 +152,8 @@ langgraph-cli init --deep
 | `diagnose.yaml` | 路径 E：诊断闭环 |
 | `platform-operation.yaml` | 路径 C：preflight→execute→analyze 循环 |
 | `ops-analysis.yaml` | 路径 B：P0/P1/P2 审计 |
+| `agent-orchestration.yaml` | 多 Agent 协作编排 — 4 种模式(basic/paired/swarm/e2e_test) + 对抗收敛 |
+| `project-graph.yaml` | 项目知识图谱 — 任何项目类型可用，互补 GitNexus |
 
 ### 多 Agent 工作流（`.langgraph/workflows/`）
 
@@ -193,6 +195,9 @@ langgraph-cli review <文件>           # 代码安全+质量审查
 langgraph-cli run workflow.yaml       # YAML 多 agent 工作流
 langgraph-cli model                   # 领域模型管理
 langgraph-cli pr                      # PR 描述生成
+langgraph-cli graph init              # 项目知识图谱（任何项目类型）
+langgraph-cli graph update            # 增量更新图谱
+langgraph-cli graph query depends:<文件>  # 影响分析
 langgraph-cli remember "决策"         # 长期记忆
 langgraph-cli recall "关键词"         # 记忆检索
 langgraph-cli health                  # 组件健康检查
