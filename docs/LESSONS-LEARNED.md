@@ -192,9 +192,26 @@ WorldQuant BRAIN alpha 研究项目中自然演化。
 
 ---
 
+### 13. 多入口文件必然漂移 —— CLAUDE.md + AGENTS.md 去重
+
+**坑**：Worldquantbrain 项目中 CLAUDE.md 和 AGENTS.md 各有一段完全相同的
+GitNexus 指令（~60 行）。改一边忘了另一边 = 必然漂移。加上
+`.langgraph/CLAUDE.md`，三份文件职责不清。
+
+**教训**：多 Agent 入口文件必须严格分工，禁止内容重叠：
+- CLAUDE.md → Claude 特定入口（命令、工具引用、API notes）
+- AGENTS.md → 通用项目规则（硬规则、执行纪律、领域约束）
+- .langgraph/CLAUDE.md → 工作流协议（状态机、路由、方法学）
+每份文件开头声明自己管什么、委托什么给另外两份。
+AGENTS.md 从 287 行减到 228 行。
+
+**发现方式**：用户问"AGENTS.md 和 CLAUDE.md 是不是冲突"，实际检查发现是重复而非冲突。
+
+---
+
 ## 四、自托管与验证
 
-### 13. E2E 仿真发现的问题比设计审查多
+### 14. E2E 仿真发现的问题比设计审查多
 
 **坑**：设计审查时觉得"trigger 条件写得清楚，deconflict 覆盖全面"。E2E 仿真一跑——bdd-acceptance 在 path F 触发了，YAML 引号导致解析失败，缩进错误让 BDD 工具成为 omega-memory 的子节点。
 
@@ -204,7 +221,7 @@ WorldQuant BRAIN alpha 研究项目中自然演化。
 
 ---
 
-### 14. 工作流对短任务是过度工程
+### 15. 工作流对短任务是过度工程
 
 **坑**：修一个明确的小 bug（已知冲突、已知修复方案）时，走完整 assess→classify→plan→execute→verify 仪式消耗的心力超过修 bug 本身。
 
@@ -214,7 +231,7 @@ WorldQuant BRAIN alpha 研究项目中自然演化。
 
 ---
 
-### 15. 用户的直觉比代码先发现问题
+### 16. 用户的直觉比代码先发现问题
 
 在整个开发过程中，用户提出的问题命中率 100%（9/9）。代码验证了直觉，而不是直觉验证了代码。
 
