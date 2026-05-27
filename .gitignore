@@ -5,3 +5,4 @@ __pycache__/
 .gitnexus
 .claude/
 .langgraph/state.json
+.langgraph/graph.json
