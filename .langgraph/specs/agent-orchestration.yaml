@@ -1,0 +1,135 @@
+# Agent Orchestration — 多 Agent 协作编排 v1.0
+# 根据项目类型、改动复杂度、开发阶段激活不同的 Agent 协作模式。
+# 集成现有的 oh-my-claude agents + 外部 MCP 工具（playwright/vision）。
+spec:
+  name: agent-orchestration
+  version: "1.0"
+  extends: task-router
+  activation: conditional  # 按需激活，不全量加载
+
+# ═══════════════════════════════════════════
+# 协作模式
+# ═══════════════════════════════════════════
+patterns:
+  basic:
+    description: "单次审查——当前已有模式"
+    agents: [validator]
+    flow: "implement → validator 检查 → 通过/回 implement"
+    activate:
+      default: true
+      skip: "单文件配置修改 | 文档更新 | 路径 A/E"
+
+  paired:
+    description: "对抗收敛—— implementer + reviewer 多轮循环直到收敛"
+    agents: [code-reviewer, validator]
+    flow: |
+      implement → review(发现问题) → implement(修复)
+      → review(再查) → implement(再修)
+      → 最多 3 轮 → 仍未收敛 → [DEADLOCK] 暂停等人工裁决
+    converge_condition: "review 无新发现 AND validator 通过"
+    max_rounds: 3
+    deadlock_action: "输出分歧点 + 双方论据 → 等用户裁决"
+    activate:
+      must: "路径 D 且改动涉及核心逻辑"
+      detect_core: "gitnexus impact=HIGH | 改动文件 ≥3 且跨 spec | 涉及认证/加密/数据模型"
+      skip: "单文件修改 | 纯 UI 调整 | 文档更新"
+
+  swarm:
+    description: "并行审查——多个 agent 同时审查，合成结果"
+    agents: [code-reviewer, security-auditor, validator]
+    flow: |
+      start → parallel(security_review + quality_review + validation)
+      → synthesize(合并发现, 去重, 分级 P0/P1/P2)
+      → 有 P0 → 回 implement → 再 swarm
+      → 无 P0 → 通过
+    max_rounds: 2
+    activate:
+      must: "改动规模大 且 production phase"
+      detect_large: "改动文件 ≥5 且 跨 ≥2 功能集群"
+      skip: "原型阶段 | 单文件修改"
+
+  e2e_test:
+    description: "端到端测试—— playwright + vision MCP 辅助 UI 验证"
+    agents: [playwright, vision-mcp]
+    tools:
+      playwright:
+        source: "@playwright/mcp"  # MCP server for browser automation
+        provides: "浏览器自动化——页面导航、点击、填表、截图"
+        activate: "项目有 HTML/frontend/static/ 目录"
+      vision-mcp:
+        source: "vision MCP server"  # 本地 OCR/screenshot 对比
+        provides: "视觉回归——截图对比、OCR 文字提取、布局检测"
+        activate: "改动涉及 UI 组件 且 有基线截图"
+    flow: |
+      implement → playwright(screenshot 改动前后对比)
+      → vision(对比 baseline, 检测布局破坏)
+      → review(人工确认视觉差异)
+      → 通过/回 implement
+    activate:
+      must: "项目有前端 UI 且 改动涉及 UI 文件"
+      detect_ui: "takeover 检测: 存在 HTML/static/frontend/ 目录 或 package.json 含 vue/react/angular"
+      skip: "后端项目 | 纯 API | 数据管道 | 工具/库"
+
+# ═══════════════════════════════════════════
+# 激活矩阵
+# ═══════════════════════════════════════════
+activation_matrix:
+  # 模式 → 项目类型 → 阶段 → 默认级别
+  basic:
+    any_project: always        # 最基础，始终可用
+  paired:
+    toolkit:    "路径 D + 核心逻辑改动 → active"
+    web_app:    "路径 D + 核心逻辑改动 → active"
+    data_pipe:  "路径 D + 核心逻辑改动 → active"
+  swarm:
+    toolkit:    "off"          # 工具项目代码量小，swarm overhead 大于收益
+    web_app:    "production + 大改动 → active"
+    data_pipe:  "production + 大改动 → active"
+  e2e_test:
+    toolkit:    "off"          # 无 UI
+    web_app:    "production + UI 改动 → active"
+    data_pipe:  "off"          # 无 UI
+
+# ═══════════════════════════════════════════
+# 场景触发（在 plan 和 implement 状态注入）
+# ═══════════════════════════════════════════
+scene_triggers:
+  plan_state:
+    on_enter: |
+      根据当前项目的 takeover 数据（项目类型、phase、文件结构）和本次任务规模，
+      决定激活哪些 agent 协作模式：
+      1. basic: 始终激活
+      2. paired: 改动涉及核心逻辑 → 激活
+      3. swarm: 改动 ≥5 文件 + production → 激活
+      4. e2e_test: 有前端 + UI 改动 → 激活
+      输出 Agent Card，注入后续状态上下文。
+
+  implement_state:
+    on_enter: |
+      根据激活的 agent 模式调整实现行为：
+      - paired: 实现后自动触发 review，准备对抗循环
+      - swarm: 实现后自动触发并行审查
+      - e2e_test: 实现涉及 UI 时自动截图对比
+
+  verify_state:
+    on_enter: |
+      paired: 检查收敛状态（是否已达 max_rounds 或已收敛）
+      swarm: 检查所有 agent 完成 + synthesis 完成
+      e2e_test: 检查 playwright 截图 + vision 对比结果
+
+# ═══════════════════════════════════════════
+# Agent Card 输出
+# ═══════════════════════════════════════════
+agent_card:
+  format: |
+    ## Agent Card
+    patterns_active:
+      basic: true
+      paired: true|false (reason)
+      swarm: true|false (reason)
+      e2e_test: true|false (reason)
+    convergence:
+      max_rounds: N
+      current_round: 0
+      state: pending
+  usage: "注入到路径 spec 的上下文。verify 状态根据 Agent Card 判断是否已收敛。"

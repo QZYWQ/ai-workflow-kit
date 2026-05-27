@@ -429,6 +429,22 @@ tool_library:
       '
     exit: model.md 已更新 AND 与 CONTEXT.md 术语一致 AND 与 ADR 决策一致
     methodology: ddd
+  agent-orchestration:
+    skill: agent-orchestration
+    methodology: agent
+    provides:
+    - 多 Agent 协作编排
+    - 对抗收敛循环
+    - 多模态 E2E 测试
+    trigger:
+      must: 路径 D plan 完成 | 路径 D 改动涉及核心逻辑 | 生产阶段大改动 | 项目有前端 UI
+      skip: 单文件配置修改 | 文档更新 | 路径 A/E
+    protocol: '根据项目类型和改动规模激活对应 agent 模式:
+
+      basic(默认) → paired(核心改动) → swarm(大改动+生产) → e2e_test(前端项目)
+
+      见 agent-orchestration.yaml'
+    exit: 所有激活的 agent 模式收敛 或 达 max_rounds 上限
 states:
   assess:
     order: 0

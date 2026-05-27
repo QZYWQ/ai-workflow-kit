@@ -1,0 +1,98 @@
+# Project Graph — 轻量项目知识图谱 v1.0
+# 对任何项目类型有效（不限于代码）。替代 GitNexus 在非代码项目中的盲区。
+# 记录文件关系、决策影响、任务关联，支持跨会话项目状态追踪。
+spec:
+  name: project-graph
+  version: "1.0"
+  extends: intelligent-takeover
+  entry: assess
+
+# ═══════════════════════════════════════════
+# 图谱模型
+# ═══════════════════════════════════════════
+graph_model:
+  node_types:
+    file:
+      description: "项目文件（代码、spec、文档、配置）"
+      properties: [path, type, cluster, last_modified]
+    decision:
+      description: "架构决策（ADR）"
+      properties: [title, status, date, affects]
+    task:
+      description: "任务状态（来自 state.json）"
+      properties: [description, status, path, state]
+    phase:
+      description: "当前开发阶段"
+      properties: [name, methodologies_active]
+    capability:
+      description: "可用能力（工具、skill、MCP）"
+      properties: [name, source, methodology, active]
+
+  edge_types:
+    depends_on:     "A 引用/依赖 B（spec A extends spec B, code A imports B）"
+    decision_affects: "ADR 影响哪些文件"
+    task_involves:  "任务涉及哪些文件"
+    phase_constrains: "阶段决定哪些方法学激活"
+    capability_belongs: "能力属于哪个方法学 bundle"
+
+# ═══════════════════════════════════════════
+# 存储与更新
+# ═══════════════════════════════════════════
+storage:
+  path: ".langgraph/graph.json"
+  format: |
+    {
+      "nodes": {
+        "files": [...],
+        "decisions": [...],
+        "tasks": [...],
+        "phase": {...},
+        "capabilities": [...]
+      },
+      "edges": [...],
+      "last_updated": "ISO8601"
+    }
+
+  update_triggers:
+    - "state 转换时（task 节点更新）"
+    - "ADR 创建/修改时（decision 节点更新）"
+    - "spec 文件增删时（file 节点更新）"
+    - "方法论激活级别变更时（capability 节点更新）"
+    - "每次会话的 takeover 完成时（phase 节点更新）"
+
+# ═══════════════════════════════════════════
+# 能力发现——替代 GitNexus 的项目查询
+# ═══════════════════════════════════════════
+capability_discovery:
+  what_files_depend_on:
+    query: "返回依赖目标文件的所有文件 → 影响分析"
+    example: "修改 task-router.yaml → 哪些 spec extends 它？→ code-implementation, design-planning, diagnose, platform-operation, ops-analysis"
+  what_decisions_affect:
+    query: "返回影响指定文件的所有决策"
+    example: "修改 methodology 激活逻辑 → ADR 001 涉及 → 需检查一致性"
+  what_tasks_involve:
+    query: "返回涉及指定文件的所有任务"
+    example: "修改 bdd-acceptance trigger → state.json 中有相关未完成任务？"
+
+# ═══════════════════════════════════════════
+# 与 GitNexus 的互补关系
+# ═══════════════════════════════════════════
+gitnexus_complement:
+  gitnexus_covers: "代码符号关系（functions, classes, methods, imports）"
+  project_graph_covers: "spec 关系、决策影响、任务状态、方法学激活、非代码文件依赖"
+  overlap: "file 节点（双方都有文件级信息）"
+  fallback: "GitNexus 不可用或项目无代码时，project-graph 作为独立影响分析工具"
+  synergy: "GitNexus 做代码级 impact，project-graph 做项目级 context"
+
+# ═══════════════════════════════════════════
+# 初始化
+# ═══════════════════════════════════════════
+initialization:
+  trigger: "langgraph-cli init --deep 或首次 takeover 检测到缺失 graph.json"
+  scan:
+    - "遍历项目文件: 按目录 + 类型分 cluster"
+    - "解析 spec extends 关系: 从 YAML spec.extends 字段"
+    - "解析 ADR: 从 docs/adr/ 目录"
+    - "加载 state.json: 创建 task 节点"
+    - "加载 methodology-activation: 创建 capability 节点"
+  output: ".langgraph/graph.json 创建，注入后续 takeover 上下文"

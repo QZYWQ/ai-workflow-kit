@@ -1,257 +1,282 @@
-# Intelligent Takeover — 智能接管协议 v1.1
-# 每次会话启动时运行一次，输出全局感知结果。
-# 独立于路由路径，在 classify 前执行。
 spec:
   name: intelligent-takeover
-  version: "1.1"
+  version: '1.1'
   entry: sense
-  priority: highest  # 在 task-router assess 之前执行
-
-# ═══════════════════════════════════════════
-# 五维感知（v1.1: +phase 开发阶段检测）
-# ═══════════════════════════════════════════
+  priority: highest
 states:
   sense:
     order: 0
     layers:
-      - state    # 项目当前状态
-      - context  # 上次会话上下文
-      - health   # 工具链健康
-      - rules    # 约束规则
-      - phase    # 开发阶段 (v1.1)
-    output: takeover_card  # 一张卡，后面所有路径引用
-    methodology_activation: |
-      接管完成后, 根据 phase + complexity signals 生成 Methodology Card。
+    - state
+    - context
+    - health
+    - rules
+    - phase
+    output: takeover_card
+    methodology_activation: '接管完成后, 根据 phase + complexity signals 生成 Methodology Card。
+
       路径 spec 在 plan 状态引用 Methodology Card 决定哪些工具可用。
 
-# ── Layer 1: State — 项目现在处于什么状态 ──
+      '
+    project_graph: 接管完成后检查 .langgraph/graph.json。缺失则触发初始化扫描（文件结构+spec关系+ADR+state.json）。存在则增量更新。注入后续上下文。
 state:
   sources:
-    - ".langgraph/state.json"       # 机器可读的项目状态描述符
-    - "git log -1 --oneline"        # 最近变更
-    - "git status --short"          # 工作区脏/净
-    - "ls runs/ output/ out/ build/ 2>/dev/null"  # 是否有产出目录
+  - .langgraph/state.json
+  - git log -1 --oneline
+  - git status --short
+  - ls runs/ output/ out/ build/ 2>/dev/null
   dimensions:
     lifecycle:
-      newborn:    "git log 为空或不相关, 且无 src|lib|app|tests|docs/ 目录结构"
-      growing:    "有 commit 历史, 或有 src|tests|docs/ 目录结构, 或文件 20-200"
-      mature:     "有产出目录(runs/output/build/) 或 ADR(docs/adr/) 或 CI(.github/workflows/) 或文件 >200"
-      unknown:    "无法判定"
+      newborn: git log 为空或不相关, 且无 src|lib|app|tests|docs/ 目录结构
+      growing: 有 commit 历史, 或有 src|tests|docs/ 目录结构, 或文件 20-200
+      mature: 有产出目录(runs/output/build/) 或 ADR(docs/adr/) 或 CI(.github/workflows/)
+        或文件 >200
+      unknown: 无法判定
     activity:
-      active:     "最近 commit < 2天, 或工作区有未提交变更, 或产出目录有今天/昨天的文件"
-      idle:       "最近 commit 2-14天"
-      dormant:    "最近 commit > 14天"
-      unknown:    "无法判定"
+      active: 最近 commit < 2天, 或工作区有未提交变更, 或产出目录有今天/昨天的文件
+      idle: 最近 commit 2-14天
+      dormant: 最近 commit > 14天
+      unknown: 无法判定
     integrity:
-      clean:      "工作区干净, 无未跟踪的关键文件"
-      dirty:      "有未提交变更, 或有未跟踪的产出文件"
-      broken:     "git status 报错, 或关键文件缺失"
-  output: "lifecycle=..., activity=..., integrity=..."
-
-# ── Layer 2: Context — 上次做到哪了 ──
+      clean: 工作区干净, 无未跟踪的关键文件
+      dirty: 有未提交变更, 或有未跟踪的产出文件
+      broken: git status 报错, 或关键文件缺失
+  output: lifecycle=..., activity=..., integrity=...
 context:
   sources:
-    - ".langgraph/state.json"           # 活跃任务 + 当前路径
-    - "runs/session-briefs/"            # handoff 文件
-    - OMEGA welcome 简报                # 自动注入
-    - ".langgraph/decisions/"           # 关键决策记录
-    # v2.5.1 fallback: 无 state.json 时从证据推断
-    - "git log --oneline -10"           # 最近提交主题
-    - "ls -t runs/ 2>/dev/null | head -5"  # 最近产出
+  - .langgraph/state.json
+  - runs/session-briefs/
+  - OMEGA welcome 简报
+  - .langgraph/decisions/
+  - git log --oneline -10
+  - ls -t runs/ 2>/dev/null | head -5
   recovery:
-    hot:     "有 state.json 且 activity=active → 直接恢复任务栈"
-    warm:    "无 state.json 但有 OMEGA/handoff → 从记忆重建"
-    inferred: "无 state.json 无 OMEGA, 但 git log + 产出目录有明确模式 → 推断当前活跃方向,标注 [inferred]"
-    cold:    "无任何上下文 → 全新评估"
-  output: "recovery=hot|warm|inferred|cold, task_stack=[...], last_path=..., last_decision=..."
-
-# ── Layer 3: Health — 工具链可用吗 ──
+    hot: 有 state.json 且 activity=active → 直接恢复任务栈
+    warm: 无 state.json 但有 OMEGA/handoff → 从记忆重建
+    inferred: 无 state.json 无 OMEGA, 但 git log + 产出目录有明确模式 → 推断当前活跃方向,标注 [inferred]
+    cold: 无任何上下文 → 全新评估
+  output: recovery=hot|warm|inferred|cold, task_stack=[...], last_path=..., last_decision=...
 health:
   checks:
-    credentials: |
-      检测 credential 文件是否存在。
-      同时检查: .env.example / .env.template / credential.txt.example → 存在说明项目期望 credential。
-      如果期望 credential 但不存在 → 标记为 degraded, 标注"credential expected but missing"。
-    api:         "如果 credential 有效 → 发一次最小 GET 验证可达性（可选，preflight 时做）"
-    dependencies: "package.json / pyproject.toml / requirements.txt 是否存在"
-    git:         "git --version 是否可用"
-  levels:
-    full:    "所有检查通过"
-    degraded: "部分不可用（如 API 不可达但本地工具正常）→ 标注哪些路径可用"
-    broken:  "关键工具缺失（如无 git）→ 建议修复后再继续"
-  output: "health=full|degraded|broken, unavailable=[...], affected_paths=[...], expected_but_missing=[...]"
+    credentials: '检测 credential 文件是否存在。
 
-# ── Layer 4: Rules — 什么约束生效 ──
+      同时检查: .env.example / .env.template / credential.txt.example → 存在说明项目期望 credential。
+
+      如果期望 credential 但不存在 → 标记为 degraded, 标注"credential expected but missing"。
+
+      '
+    api: 如果 credential 有效 → 发一次最小 GET 验证可达性（可选，preflight 时做）
+    dependencies: package.json / pyproject.toml / requirements.txt 是否存在
+    git: git --version 是否可用
+  levels:
+    full: 所有检查通过
+    degraded: 部分不可用（如 API 不可达但本地工具正常）→ 标注哪些路径可用
+    broken: 关键工具缺失（如无 git）→ 建议修复后再继续
+  output: health=full|degraded|broken, unavailable=[...], affected_paths=[...], expected_but_missing=[...]
 rules:
   sources:
-    - "CLAUDE.md"
-    - "AGENTS.md"
-    - "CONTEXT.md"
-    - "README.md"                  # 很多项目把规则写在这里
-    - "docs/*.md"                  # 文档目录中的规则文件
-    - ".langgraph/specs/"
-    - "项目下 *.skill.md（如有）"
+  - CLAUDE.md
+  - AGENTS.md
+  - CONTEXT.md
+  - README.md
+  - docs/*.md
+  - .langgraph/specs/
+  - 项目下 *.skill.md（如有）
   extraction:
-    hard_rules:    "MUST/MUST NOT/禁止/硬性/Do not/Never 开头的规则"
-    domain_terms:  "项目特有的领域术语表（优先从 CONTEXT.md, 其次 README.md）"
-    stop_conditions: "什么情况下应该停止/切换方向"
-    output_paths:  "产出文件应该放在哪里"
-  output: "hard_rules=N, domain_terms=[...], output_root=..., rules_sources=[...]"
-
-# ── Layer 5: Phase — 开发阶段检测 (v1.1) ──
+    hard_rules: MUST/MUST NOT/禁止/硬性/Do not/Never 开头的规则
+    domain_terms: 项目特有的领域术语表（优先从 CONTEXT.md, 其次 README.md）
+    stop_conditions: 什么情况下应该停止/切换方向
+    output_paths: 产出文件应该放在哪里
+  output: hard_rules=N, domain_terms=[...], output_root=..., rules_sources=[...]
 phase:
   sources:
-    - "git tag --sort=-creatordate | head -3"
-    - "ls .github/workflows/ .gitlab-ci.yml 2>/dev/null"
-    - "项目文件数"
-    - "用户描述中的 原型/MVP/生产/维护 等关键词"
-    - "最近 30 天 git log --diff-filter=A --name-only 的新增文件占比"
+  - git tag --sort=-creatordate | head -3
+  - ls .github/workflows/ .gitlab-ci.yml 2>/dev/null
+  - 项目文件数
+  - 用户描述中的 原型/MVP/生产/维护 等关键词
+  - 最近 30 天 git log --diff-filter=A --name-only 的新增文件占比
   dimensions:
     toolkit:
-      detect: "无UI/Web服务/API endpoint + (有package.json/bin或setup.py/console_scripts或go.mod或Cargo.toml或Makefile/cmake) + 无HTML模板/static目录/Dockerfile"
-      markers: ["用户说 库/工具/CLI/SDK/package", "项目自身是开发工具链", "文件结构特征: bin/ 或 cli.py 或 main.go 等CLI入口"]
+      detect: 无UI/Web服务/API endpoint + (有package.json/bin或setup.py/console_scripts或go.mod或Cargo.toml或Makefile/cmake)
+        + 无HTML模板/static目录/Dockerfile
+      markers:
+      - 用户说 库/工具/CLI/SDK/package
+      - 项目自身是开发工具链
+      - '文件结构特征: bin/ 或 cli.py 或 main.go 等CLI入口'
       signals:
-        - "ls package.json 2>/dev/null && grep -q '\"bin\"' package.json"
-        - "ls setup.py pyproject.toml 2>/dev/null"
-        - "ls go.mod Cargo.toml Makefile CMakeLists.txt 2>/dev/null"
-        - "ls templates/ static/ public/ Dockerfile docker-compose*.yml 2>/dev/null → NOT toolkit"
-        - "ls src/server* src/app* api/ routes/ 2>/dev/null → NOT toolkit"
+      - ls package.json 2>/dev/null && grep -q '"bin"' package.json
+      - ls setup.py pyproject.toml 2>/dev/null
+      - ls go.mod Cargo.toml Makefile CMakeLists.txt 2>/dev/null
+      - ls templates/ static/ public/ Dockerfile docker-compose*.yml 2>/dev/null →
+        NOT toolkit
+      - ls src/server* src/app* api/ routes/ 2>/dev/null → NOT toolkit
     prototype:
-      detect: "文件<20 AND 无CI AND git tag为空 AND 提交<5"
-      markers: ["用户说 原型/prototype/快速验证/试试"]
+      detect: 文件<20 AND 无CI AND git tag为空 AND 提交<5
+      markers:
+      - 用户说 原型/prototype/快速验证/试试
     mvp:
-      detect: "文件20-100 AND 有基本测试"
-      markers: ["CI 配置存在", "无生产部署配置", "无 git tag"]
+      detect: 文件20-100 AND 有基本测试
+      markers:
+      - CI 配置存在
+      - 无生产部署配置
+      - 无 git tag
     production:
-      detect: "有CI/CD pipeline AND git tag存在 AND 有部署配置"
-      markers: ["生产环境配置", "监控/告警", "用户说 生产/正式"]
+      detect: 有CI/CD pipeline AND git tag存在 AND 有部署配置
+      markers:
+      - 生产环境配置
+      - 监控/告警
+      - 用户说 生产/正式
     maintenance:
-      detect: "文件>100 AND 最近30天新增文件<5% AND 提交以fix为主"
-      markers: ["用户说 维护/修bug/小改动"]
+      detect: 文件>100 AND 最近30天新增文件<5% AND 提交以fix为主
+      markers:
+      - 用户说 维护/修bug/小改动
     unknown:
-      detect: "无法匹配上述"
-  output: "phase=toolkit|prototype|mvp|production|maintenance|unknown"
+      detect: 无法匹配上述
+  output: phase=toolkit|prototype|mvp|production|maintenance|unknown
   refresh_trigger:
-    - "首次 release (git tag 出现)"
-    - "CI/CD 配置新增"
-    - "项目文件数增长 >200%"
-    - "用户说 进入生产/发布版本"
-    - "每个新会话开始时"
-
-# ═══════════════════════════════════════════
-# 感知输出: Takeover Card
-# ═══════════════════════════════════════════
+    - 首次 release (git tag 出现)
+    - CI/CD 配置新增
+    - 项目文件数增长 >200%
+    - 用户说 进入生产/发布版本
+    - 每个新会话开始时
 takeover_card:
-  format: |
-    ## Takeover Card
+  format: '## Takeover Card
+
     - lifecycle: newborn|growing|mature
+
     - activity:  active|idle|dormant
+
     - integrity: clean|dirty|broken
+
     - recovery:  hot|warm|cold
+
     - health:    full|degraded|broken
+
     - phase:     toolkit|prototype|mvp|production|maintenance|unknown
+
     - rules:     N hard rules loaded
+
     - active_task: <from state.json>
+
     - recommendation: <一句话建议下一步>
 
-  # 这张卡注入到后续所有路径的上下文中
-  # 路径 spec 在 plan 状态引用 takeover_card + methodology_card 而非重新探测
-
+    '
 methodology_card:
-  format: |
-    ## Methodology Card
+  format: '## Methodology Card
+
     phase: toolkit|prototype|mvp|production|maintenance
+
     tdd: active|passive|off
+
     bdd: active|passive|off
+
     ddd: active|passive|off
+
     verify_full: active|passive|off
+
     available_tools: [当前可用的工具列表]
+
     inactive_tools: [当前不可用的工具列表]
+
     suggestions: [auto-detect 建议升级的 methodology]
-  usage: |
-    注入到路径 spec 上下文。路径 spec 的 tools_from_library 只包含
+
+    '
+  usage: '注入到路径 spec 上下文。路径 spec 的 tools_from_library 只包含
+
     methodology_card.available_tools 中的工具。不可用工具视为不存在。
-  generation: |
-    根据 methodology-activation.yaml 的 phases.{phase}.default_activation
+
+    '
+  generation: '根据 methodology-activation.yaml 的 phases.{phase}.default_activation
+
     生成默认激活级别。然后检查 complexity_signals 是否有建议升级。
+
     输出 Methodology Card, 等待用户确认(auto_suggest 的升级)。
-# ═══════════════════════════════════════════
+
+    '
 behavior:
   hot_recovery:
-    condition: "recovery=hot AND active_task 未完成"
-    action: "恢复任务栈+路径+状态。但 phase 和 methodology 必须 re-evaluate（项目状态可能变了）。仅 task_stack/current_path/current_state 热恢复。输出: 'hot recovery: 恢复任务栈, phase re-evaluated: unknown→toolkit'。"
+    condition: recovery=hot AND active_task 未完成
+    action: '恢复任务栈+路径+状态。但 phase 和 methodology 必须 re-evaluate（项目状态可能变了）。仅 task_stack/current_path/current_state
+      热恢复。输出: ''hot recovery: 恢复任务栈, phase re-evaluated: unknown→toolkit''。'
   warm_recovery:
-    condition: "recovery=warm"
-    action: "从 handoff/OMEGA 重建任务上下文，然后按用户当前请求 classify。"
+    condition: recovery=warm
+    action: 从 handoff/OMEGA 重建任务上下文，然后按用户当前请求 classify。
   inferred_recovery:
-    condition: "recovery=inferred"
-    action: "从 git log + 产出目录推断当前活跃方向。展示推断结果给用户确认，标注 [inferred]。确认后按用户请求 classify。"
+    condition: recovery=inferred
+    action: 从 git log + 产出目录推断当前活跃方向。展示推断结果给用户确认，标注 [inferred]。确认后按用户请求 classify。
   cold_start:
-    condition: "recovery=cold"
-    action: "标准 assess → classify 流程。"
+    condition: recovery=cold
+    action: 标准 assess → classify 流程。
   degraded_mode:
-    condition: "health=degraded"
-    action: "标注不可用的路径。如果用户请求触发不可用路径 → 提前告知，提供替代方案。特别注意: 如果 credential 期望但缺失, preflight 阶段也跳过 API 探测。"
+    condition: health=degraded
+    action: '标注不可用的路径。如果用户请求触发不可用路径 → 提前告知，提供替代方案。特别注意: 如果 credential 期望但缺失, preflight
+      阶段也跳过 API 探测。'
   broken_state:
-    condition: "integrity=broken OR health=broken"
-    action: "进入诊断模式——先修复基础设施，再处理用户任务。"
-
+    condition: integrity=broken OR health=broken
+    action: 进入诊断模式——先修复基础设施，再处理用户任务。
   state_aware:
-    condition: "状态机进入新状态"
-    action: |
-      根据当前状态动态调整 methodology 激活级别:
+    condition: 状态机进入新状态
+    action: '根据当前状态动态调整 methodology 激活级别:
+
       - assess/classify: 所有 methodology off(不需要)
+
       - plan: 根据 phase + complexity 评估, 恢复方法论激活
+
       - implement: TDD active, DDD active(约束层), BDD 保持 plan 时的级别
+
       - verify: BDD active(如有 .feature), verify_full active(如生产阶段)
+
       - done: 所有 methodology off
+
+      '
   user_toggle:
     commands:
-      activate: "用户说 激活BDD/开启DDD/启用完整验证 → 目标methodology→active"
-      deactivate: "用户说 关闭DDD/跳过BDD/简化验证 → 目标methodology→off或passive"
-      temporary: "用户说 这次不用TDD → 仅当前任务降级, 下次任务恢复默认"
-      show: "用户说 当前激活了哪些方法论 → 输出 Methodology Card"
+      activate: 用户说 激活BDD/开启DDD/启用完整验证 → 目标methodology→active
+      deactivate: 用户说 关闭DDD/跳过BDD/简化验证 → 目标methodology→off或passive
+      temporary: 用户说 这次不用TDD → 仅当前任务降级, 下次任务恢复默认
+      show: 用户说 当前激活了哪些方法论 → 输出 Methodology Card
   auto_suggest:
-    trigger: "complexity_signal 被检测到"
-    behavior: "不自动升级——输出 [METHODOLOGY SUGGEST] 等待用户确认"
-    cooldown: "建议被拒绝后, 30分钟内不再建议相同升级"
+    trigger: complexity_signal 被检测到
+    behavior: 不自动升级——输出 [METHODOLOGY SUGGEST] 等待用户确认
+    cooldown: 建议被拒绝后, 30分钟内不再建议相同升级
     signal_checks:
-      generic: "检测到项目复杂度增长信号(文件增长/跨模块引用/行为回归)时 → 建议对应方法论升级。具体判断由接管时的 phase+context 综合评估。"
+      generic: 检测到项目复杂度增长信号(文件增长/跨模块引用/行为回归)时 → 建议对应方法论升级。具体判断由接管时的 phase+context
+        综合评估。
     check_on:
-      - "接管完成后(与 phase detection 同时)"
-      - "plan 状态进入时"
-      - "implement 中发现 scope creep 时"
-
+    - 接管完成后(与 phase detection 同时)
+    - plan 状态进入时
+    - implement 中发现 scope creep 时
   phase_transition:
-    trigger: "phase_transition signal 被检测到"
-    behavior: "自动更新所有 methodology 到新阶段默认级别, 输出 Phase Transition Card"
-    user_override_priority: |
-      用户手动设置的激活级别优先于 phase 自动切换。
+    trigger: phase_transition signal 被检测到
+    behavior: 自动更新所有 methodology 到新阶段默认级别, 输出 Phase Transition Card
+    user_override_priority: '用户手动设置的激活级别优先于 phase 自动切换。
+
       如果用户说过 "关闭 BDD" → BDD=off —— phase 从 prototype 自动升级到 mvp 时,
+
       BDD 保持 off, 不随 phase 默认值变化。其他未手动覆盖的方法学正常自动升级。
+
       用户说 "恢复默认" → 清空所有手动覆盖, 回到 phase 默认。
-# ═══════════════════════════════════════════
-# state.json — 项目状态描述符（最小 schema）
-# ═══════════════════════════════════════════
+
+      '
 state_descriptor:
-  path: ".langgraph/state.json"
+  path: .langgraph/state.json
   schema:
-    active_task: "string | null"
-    task_stack: "[string]"
-    current_path: "A|B|C|D|E|F|null"
-    current_state: "string | null"
-    last_decision: "string | null"
-    phase: "toolkit|prototype|mvp|production|maintenance|unknown"
+    active_task: string | null
+    task_stack: '[string]'
+    current_path: A|B|C|D|E|F|null
+    current_state: string | null
+    last_decision: string | null
+    phase: toolkit|prototype|mvp|production|maintenance|unknown
     methodology_state:
-      tdd: "active|passive|off"
-      bdd: "active|passive|off"
-      ddd: "active|passive|off"
-      verify_full: "active|passive|off"
-    last_updated: "ISO8601"
-    outputs_pending_verification: "[string]"
+      tdd: active|passive|off
+      bdd: active|passive|off
+      ddd: active|passive|off
+      verify_full: active|passive|off
+    last_updated: ISO8601
+    outputs_pending_verification: '[string]'
   update_triggers:
-    - "路径切换时"
-    - "关键决策后"
-    - "产出文件创建后"
-    - "done 状态时"
-    - "phase 变更或 methodology 级别变更时"
+  - 路径切换时
+  - 关键决策后
+  - 产出文件创建后
+  - done 状态时
+  - phase 变更或 methodology 级别变更时
