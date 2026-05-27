@@ -111,6 +111,7 @@ tool_library:
     deconflict:
       vs_grill_me: grill-with-docs 检查文档+写文档, grill-me 仅纯策略逻辑 stress-test, 不检查文档
       vs_ddd_tenets: grill-with-docs 收敛术语(叫什么), ddd-tenets 约束结构(是什么类型)。互补
+    methodology: core
   diagnose:
     skill: diagnose
     provides:
@@ -129,6 +130,7 @@ tool_library:
 
       '
     exit: bug 不再复现 AND 回归测试通过 AND 根因已定位
+    methodology: core
   tdd:
     skill: tdd
     provides:
@@ -143,6 +145,7 @@ tool_library:
 
       '
     exit: 所有步骤测试通过 AND gitnexus detect_changes 确认范围
+    methodology: tdd
   worldquant-brain-alpha-engineering:
     skill: worldquant-brain-alpha-engineering
     provides:
@@ -153,6 +156,7 @@ tool_library:
     trigger:
       must: 项目检测为 alpha-research AND 任务涉及 alpha 设计/挖掘/提交/诊断
       skip: 纯读文件/解释代码/账户状态查询
+    methodology: core
   prototype:
     skill: prototype
     provides:
@@ -162,6 +166,7 @@ tool_library:
     protocol: 'LOGIC 分支: tiny CLI app 推动状态机通过难推理的 case。UI 分支: 多套激进不同方案, URL param
       切换。'
     exit: 问题已回答 → 扔掉原型, 保留结论
+    methodology: core
   verify:
     skill: verify
     provides:
@@ -172,6 +177,7 @@ tool_library:
     exit: 测试 PASS AND 产出匹配计划 AND 无未提交变更破坏性副作用
     deconflict:
       vs_bdd_evaluate: verify 验证'测试通过+产出匹配', bdd-evaluate 验证'行为符合 spec'。互补
+    methodology: core
   grill-me:
     skill: grill-me
     provides:
@@ -184,6 +190,7 @@ tool_library:
     exit: 所有决策分支已解决
     deconflict:
       vs_grill_with_docs: grill-me 不检查 CONTEXT.md/ADR, 不写文档。有文档的项目用 grill-with-docs。
+    methodology: core
   handoff:
     skill: handoff
     provides:
@@ -191,12 +198,14 @@ tool_library:
     trigger:
       must: 任务未完成但上下文将满 | 用户说'下次继续'/'handoff' | 多会话追踪
     protocol: 压缩当前会话状态+未完成任务+关键决策 → handoff 文档。agent 读入即可继续。
+    methodology: core
   to-prd:
     skill: to-prd
     provides:
     - PRD 生成→发布到 issue tracker
     trigger:
       must: 用户说 'create PRD' / '生成 PRD' | 设计完成后需要正式文档化
+    methodology: core
   to-issues:
     skill: to-issues
     provides:
@@ -204,6 +213,7 @@ tool_library:
     trigger:
       must: 用户说 'break into issues'/'拆成 issues' | plan 完成后需要分配任务
     protocol: 用 tracer-bullet 竖切——每个 issue 一个完整 vertical slice。
+    methodology: core
   caveman:
     skill: caveman
     provides:
@@ -211,6 +221,7 @@ tool_library:
     - 节省 ~75% token
     trigger:
       must: 用户说 'caveman'/'少说话'/'简短点' | 上下文空间紧张
+    methodology: core
   langgraph-cli-analyze:
     cli: langgraph-cli analyze .
     provides:
@@ -220,6 +231,7 @@ tool_library:
     deconflict:
       vs_gitnexus_context: analyze = 全局概览(文件+架构), context = 单个符号深潜(调用者+被调用者)
       vs_gitnexus_impact: impact = 修改前评估 blast radius, analyze = 理解全局架构
+    methodology: core
   langgraph-cli-review:
     cli: langgraph-cli review <file>
     provides:
@@ -229,12 +241,14 @@ tool_library:
     deconflict:
       vs_oh_my_claude_code_reviewer: review = 当前会话即时同步审查, code-reviewer = PR diff
         全面审查(agent 委托)
+    methodology: core
   langgraph-cli-pr:
     cli: langgraph-cli pr
     provides:
     - PR 描述生成
     trigger:
       must: 编码完成后, 准备提交 PR 前
+    methodology: core
   langgraph-cli-run:
     cli: langgraph-cli run <workflow.yaml>
     provides:
@@ -242,12 +256,14 @@ tool_library:
     trigger:
       must: 批量 API 操作(api-batch.yaml) | 批量代码审查(code-review.yaml)
       skip: 单次 API 调用 | <4 个 alpha 操作
+    methodology: core
   gitnexus-context:
     cli: gitnexus context <symbol>
     provides:
     - 符号完整上下文: 调用者+被调用者+所在 flow
     trigger:
       must: 修改/理解任何函数/类/符号前
+    methodology: core
   gitnexus-impact:
     cli: gitnexus impact <symbol>
     provides:
@@ -257,6 +273,7 @@ tool_library:
     protocol: 如果返回 HIGH/CRITICAL → 暂停, 汇报影响范围, 等待用户确认
     deconflict:
       vs_gitnexus_context: context = 理解(进入时), impact = 评估改动后果(改前)
+    methodology: core
   gitnexus-detect-changes:
     cli: gitnexus detect_changes
     provides:
@@ -264,6 +281,7 @@ tool_library:
     trigger:
       must: '路径 D: 提交前 | 编码完成后的 verify 状态'
     protocol: 如果影响超预期 → 回 implement 修复
+    methodology: core
   oh-my-claude-critic:
     agent: oh-my-claude:critic
     provides:
@@ -272,6 +290,7 @@ tool_library:
       must: '路径 D/F: plan 完成后, implement 前 | 复杂计划 (>5 步骤)'
     protocol: Agent(subagent_type='oh-my-claude:critic', prompt='Review this plan...')
     output: APPROVED / NEEDS_REVISION / REJECTED
+    methodology: core
   oh-my-claude-code-reviewer:
     agent: oh-my-claude:code-reviewer
     provides:
@@ -280,30 +299,35 @@ tool_library:
       must: '路径 D: review 状态, 全部代码写完 merge 前'
     deconflict:
       vs_langgraph_cli_review: review = per-file 即时, code-reviewer = final PR diff
+    methodology: verify_full
   oh-my-claude-validator:
     agent: oh-my-claude:validator
     provides:
     - 技术正确性: 测试/lint/验证
     trigger:
       must: 编码完成后, 声明 done 前
+    methodology: verify_full
   oh-my-claude-security-auditor:
     agent: oh-my-claude:security-auditor
     provides:
     - OWASP/注入/凭据/依赖CVE 深度审查
     trigger:
       must: 用户说 'security review' | 涉及认证/授权/加密/外部输入
+    methodology: verify_full
   oh-my-claude-advisor:
     agent: oh-my-claude:advisor
     provides:
     - plan 前 gap 分析: 隐藏需求/范围风险
     trigger:
       must: 复杂任务(跨系统/跨模块) | 用户请求不完整(信息差 >30%)
+    methodology: core
   oh-my-claude-risk-assessor:
     agent: oh-my-claude:risk-assessor
     provides:
     - 变更风险评估(功能性/安全/兼容/性能/运维)
     trigger:
       must: 非琐碎 plan 完成后, 执行前
+    methodology: core
   omega-memory:
     provides:
     - 自动长期记忆
@@ -313,6 +337,7 @@ tool_library:
     deconflict:
       vs_langgraph_cli_remember: OMEGA = 自动跨会话持久化, langgraph-cli remember = 用户明确'记住这个'的显式保存
       vs_handoff: OMEGA = 长期, handoff = 单会话→下一会话的短期快照
+    methodology: core
   bdd-acceptance:
     skill: bdd-acceptance
     provides:
@@ -335,6 +360,7 @@ tool_library:
     deconflict:
       vs_grill_with_docs: 'grill-with-docs 收敛术语, bdd-acceptance 用收敛后的术语写可执行 spec。顺序:
         grill-with-docs exit → bdd-acceptance start'
+    methodology: bdd
   bdd-evaluate:
     skill: bdd-evaluate
     provides:
@@ -356,6 +382,7 @@ tool_library:
     exit: 所有 scenario PASS AND 无遗漏行为
     deconflict:
       vs_verify: verify 检查'测试通过+产出匹配', bdd-evaluate 检查'行为符合 spec'。互补, 不冲突
+    methodology: bdd
   bdd-reconcile:
     skill: bdd-reconcile
     provides:
@@ -376,6 +403,7 @@ tool_library:
 
       '
     exit: 变更链完整 AND 所有受影响层已更新 AND 无断裂引用
+    methodology: bdd
   ddd-tenets:
     cli: npx tenets check
     provides:
@@ -406,6 +434,7 @@ tool_library:
       vs_tdd: ddd-tenets 负责类型分类(每实体一次), tdd 负责行为验证(每步骤一次)。不冲突——分类先于验证
       vs_diagnose: path E 的 ddd-tenets 是只读诊断工具——分析领域结构定位根因。不新建 Entity/不重组边界。不违反 diagnose
         的'最小修复'原则。
+    methodology: ddd
   ddd-model:
     cli: langgraph-cli model
     provides:
@@ -430,6 +459,7 @@ tool_library:
     deconflict:
       vs_CONTEXT_md: CONTEXT.md = 术语表+项目约定, model.md = 领域结构+关系。互补
       vs_ADR: ADR = 单次决策记录, model.md = 当前聚合状态
+    methodology: ddd
 states:
   assess:
     order: 0
@@ -583,6 +613,12 @@ states:
       behavior: 记录覆盖原因, 然后允许执行被禁止的操作。不静默跳过。
       format: '[OVERRIDE] 状态: plan | 禁止: Write | 原因: 原型验证不需要完整设计 | 用户确认: yes'
       principle: 工作流是建议, 不是监狱。用户有权覆盖——但覆盖必须有记录, 不能沉默。
+    methodology_filter:
+      description: 按需注入：根据 Methodology Card 过滤可用工具。off 的工具不出现在上下文中。
+      rule: plan 状态进入时，根据 Methodology Card 的激活级别过滤工具库：active/passive → 工具可用；off →
+        工具从 available_tools 中移除，其 spec 文本视为不存在。
+      core_always_available: methodology=core 的工具始终可用，不受方法论激活影响。
+      effect: 减少上下文噪音。toolkit 项目 BDD=off → bdd-acceptance/evaluate/reconcile 的定义不注入。
   execute:
     order: 3
     on_enter: 逐步骤执行, 每步完成后标记 [✓]。遇错暂停。
