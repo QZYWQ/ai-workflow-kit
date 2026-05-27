@@ -42,6 +42,9 @@ class SimProject:
 
     def detect_phase(self):
         """模拟 phase 检测——维护阶段检查优先于生产阶段"""
+        # toolkit: 库/CLI/工具项目 — 最早检查
+        if any(kw in self.user_description for kw in ["工具", "CLI", "SDK", "库", "package", "命令行"]):
+            return "toolkit"
         if any(kw in self.user_description for kw in ["原型", "prototype", "试试", "快速验证"]):
             return "prototype"
         if self.file_count < 20 and not self.has_ci and not self.has_git_tags and self.commit_count < 5:
@@ -229,14 +232,38 @@ t.ok("assess/classify → all methodologies off (不需要)")
 t.ok("用户问 '这个文件做什么的' → 路径 A → 无方法论激活")
 t.done()
 
-# 场景 9: 状态感知切换
+
+# 场景 9: 按需注入 — off 工具不出现在上下文
+t = test("按需注入: toolkit phase BDD=off → bdd 工具不出现在上下文")
+proj = SimProject(file_count=25, user_description="开发一个命令行工具库 CLI")
+phase = proj.detect_phase()
+activation = get_default_activation(phase)
+methodology_map = {
+    "bdd": ["bdd-acceptance", "bdd-evaluate", "bdd-reconcile"],
+    "ddd": ["ddd-tenets", "ddd-model"],
+    "tdd": ["tdd"],
+}
+off_methods = {m for m, level in activation.items() if str(level).lower() == "off"}
+filtered = []
+for meth, tools in methodology_map.items():
+    if meth in off_methods:
+        filtered.extend(tools)
+t.ok(f"off methodologies: {sorted(off_methods)}")
+t.ok(f"filtered OUT: {sorted(filtered)}")
+if "bdd-acceptance" in filtered:
+    t.ok("BDD=off → bdd 工具不注入上下文")
+else:
+    t.fail("BDD=off 但 bdd 仍在上下文")
+t.done()
+
+# 场景 10: 状态感知切换
 t = test("状态感知: implement→verify 自动调整 BDD")
 t.ok("implement 状态: TDD active, DDD active(约束), BDD 保持 plan 级别")
 t.ok("verify 状态: BDD active(如有.feature), verify_full active(如生产)")
 t.ok("done 状态: 所有 methodology off")
 t.done()
 
-# 场景 10: 临时关闭
+# 场景 11: 临时关闭
 t = test("临时关闭: '这次不用 TDD' → 仅当前任务")
 t.ok("用户: '这次不用TDD, 只是改个配置' → TDD→off(本次)")
 t.ok("下次任务: 恢复 phase 默认的 TDD active")
