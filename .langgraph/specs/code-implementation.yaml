@@ -17,6 +17,7 @@ states:
       - bdd-acceptance         # trigger: plan 完成, 涉及用户可见行为 → 生成 .feature
       - ddd-tenets             # trigger: 新领域概念(≥3实体) → DDD 结构约束
       - ddd-model              # trigger: ddd-tenets 完成后 → 持久化领域模型
+      - agent-orchestration    # trigger: plan 完成 → 根据项目类型+改动规模生成 Agent Card
     rules:
       - "gitnexus-context: 修改任何函数/类前 MUST 查"
       - "grill-with-docs 的 exit 条件满足前 → 不进入 implement"
@@ -38,6 +39,7 @@ states:
       - "DDD 与 TDD 分工: DDD 约束回答'这个类型是什么'(Entity/VO/Aggregate)——每类型标注一次；TDD 约束回答'这个功能对吗'(test→impl→refactor)——每步骤一次。DDD 不是 TDD 的替代，是 TDD 每步实现时的类型检查。禁止以 DDD 为理由跳过 TDD 步骤。"
       - "implement → review 回退上限: 3 次。第 3 次仍未通过 → 暂停+汇报根因，不等用户决策不继续。"
       - "scope creep 检测: 如果实际变更范围 ≥ origin_plan_scope × 2(文件数或模块数)，暂停并输出 [SCOPE CREEP] 警告。建议: 1) 回 plan 重新评估 bdd-acceptance 是否需要更新 spec; 2) 检查 ddd-model 是否需要更新领域模型。用户可 override 继续。"
+      - "Agent Card 感知: paired 模式 → 实现后自动触发 review(准备对抗循环); swarm 模式 → 实现后触发并行审查; e2e_test 模式 → UI 改动时自动截图。见 agent-orchestration.yaml。"
 
   review:
     on_enter: "审查变更的正确性+副作用。回退计数器: implement_retries=0。"
@@ -51,5 +53,6 @@ states:
     rules:
       - "P0 问题 → implement_retries += 1。if implement_retries > 3 → 暂停+汇报根因。else → 回 implement"
       - "gitnexus-detect-changes 超预期 → implement_retries += 1。if implement_retries > 3 → 暂停+汇报根因。else → 回 implement"
+      - "Agent Card 收敛检查: paired 模式 → 检查 review 是否无新发现(收敛) 或 达 max_rounds(deadlock→人工裁决); swarm 模式 → 检查所有 agent 完成 + synthesis 完成; e2e_test 模式 → 检查 playwright 截图 + vision 对比结果。"
       - "bdd-evaluate 失败 → implement_retries += 1。if implement_retries > 3 → 暂停+汇报根因。else → 回 implement"
     exit: "review PASS AND detect_changes 范围正常 AND 无 P0 AND implement_retries ≤ 3"
