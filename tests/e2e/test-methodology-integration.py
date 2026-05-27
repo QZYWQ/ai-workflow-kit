@@ -661,15 +661,12 @@ with test("工具 deconflict 完整性") as t:
         assert_true("protocol" in tool, f"{tool_name} 有 protocol", r)
         assert_true("exit" in tool, f"{tool_name} 有 exit", r)
 
-    # 关键 deconflict 对
-    for a, b in [("grill-with-docs", "ddd-tenets"), ("verify", "bdd-evaluate"),
-                  ("grill-with-docs", "bdd-acceptance")]:
+    # v2.7: deconflict 矩阵已精简为跨系统冲突裁决
+    # 只保留有系统级冲突裁决的对
+    for a, b in [("grill-with-docs", "ddd-tenets"), ("verify", "bdd-evaluate")]:
         d = engine.evaluate_deconflict(a, b)
         assert_true(d and d["type"] != "no_conflict_declared",
-                   f"{a} vs {b} 有 deconflict 规则", r)
-
-    d = engine.evaluate_deconflict("bdd-evaluate", "verify")
-    assert_true(d and "互补" in str(d.get("rule", "")), "bdd-evaluate vs verify 互补", r)
+                   f"{a} vs {b} 有冲突裁决规则", r)
 
 
 # ═══════════════════════════════════════════

@@ -109,9 +109,12 @@ tool_library:
     protocol: 逐题追问, 每次一个, 等待反馈, 提供推荐答案。优先探索代码库回答。不批处理。
     exit: 所有分支解决 AND 术语收敛 AND 设计决策已记录
     deconflict:
-      vs_grill_me: grill-with-docs 检查文档+写文档, grill-me 仅纯策略逻辑 stress-test, 不检查文档
       vs_ddd_tenets: grill-with-docs 收敛术语(叫什么), ddd-tenets 约束结构(是什么类型)。互补
     methodology: core
+    modes:
+      with_docs: 默认模式——检查 CONTEXT.md/ADR, 写文档
+      no_docs: 'grill-me 模式——纯策略 stress-test, 不检查文档, 不写文档。触发: 用户说 grill me 或 stress
+        test'
   diagnose:
     skill: diagnose
     provides:
@@ -178,19 +181,6 @@ tool_library:
     deconflict:
       vs_bdd_evaluate: verify 验证'测试通过+产出匹配', bdd-evaluate 验证'行为符合 spec'。互补
     methodology: core
-  grill-me:
-    skill: grill-me
-    provides:
-    - 纯策略逻辑 stress-test
-    - 无文档检查
-    trigger:
-      must: 用户明确 'grill me' 或 'stress test this plan'
-      skip: 项目有 CONTEXT.md → 用 grill-with-docs 代替（因为需要文档交叉验证）
-    protocol: 逐题追问, 每次一个, 探索代码库回答。不写文档。
-    exit: 所有决策分支已解决
-    deconflict:
-      vs_grill_with_docs: grill-me 不检查 CONTEXT.md/ADR, 不写文档。有文档的项目用 grill-with-docs。
-    methodology: core
   handoff:
     skill: handoff
     provides:
@@ -228,9 +218,6 @@ tool_library:
     - 项目结构全局分析
     trigger:
       must: '路径 B: 运维扫描 | 路径 F: 设计前理解现状 | 陌生项目首次'
-    deconflict:
-      vs_gitnexus_context: analyze = 全局概览(文件+架构), context = 单个符号深潜(调用者+被调用者)
-      vs_gitnexus_impact: impact = 修改前评估 blast radius, analyze = 理解全局架构
     methodology: core
   langgraph-cli-review:
     cli: langgraph-cli review <file>
@@ -238,9 +225,6 @@ tool_library:
     - 并行安全+质量审查
     trigger:
       must: '路径 D: 编码完成后立即 | 提交前 final check'
-    deconflict:
-      vs_oh_my_claude_code_reviewer: review = 当前会话即时同步审查, code-reviewer = PR diff
-        全面审查(agent 委托)
     methodology: core
   langgraph-cli-pr:
     cli: langgraph-cli pr
@@ -271,8 +255,6 @@ tool_library:
     trigger:
       must: 编辑任何函数/类/符号前——MUST NOT SKIP
     protocol: 如果返回 HIGH/CRITICAL → 暂停, 汇报影响范围, 等待用户确认
-    deconflict:
-      vs_gitnexus_context: context = 理解(进入时), impact = 评估改动后果(改前)
     methodology: core
   gitnexus-detect-changes:
     cli: gitnexus detect_changes
@@ -297,8 +279,6 @@ tool_library:
     - 实现后全面代码审查(PR diff 级)
     trigger:
       must: '路径 D: review 状态, 全部代码写完 merge 前'
-    deconflict:
-      vs_langgraph_cli_review: review = per-file 即时, code-reviewer = final PR diff
     methodology: verify_full
   oh-my-claude-validator:
     agent: oh-my-claude:validator
@@ -334,9 +314,6 @@ tool_library:
     trigger:
       auto: SessionStart hook 注入欢迎简报
       manual: omega_store(content, 'decision') — 完成任务后保存关键决策
-    deconflict:
-      vs_langgraph_cli_remember: OMEGA = 自动跨会话持久化, langgraph-cli remember = 用户明确'记住这个'的显式保存
-      vs_handoff: OMEGA = 长期, handoff = 单会话→下一会话的短期快照
     methodology: core
   bdd-acceptance:
     skill: bdd-acceptance
@@ -357,9 +334,6 @@ tool_library:
 
       '
     exit: .feature 文件存在 AND 覆盖所有 plan 中声明的行为 AND 术语与 grill-with-docs 收敛结果一致
-    deconflict:
-      vs_grill_with_docs: 'grill-with-docs 收敛术语, bdd-acceptance 用收敛后的术语写可执行 spec。顺序:
-        grill-with-docs exit → bdd-acceptance start'
     methodology: bdd
   bdd-evaluate:
     skill: bdd-evaluate
@@ -380,8 +354,6 @@ tool_library:
 
       '
     exit: 所有 scenario PASS AND 无遗漏行为
-    deconflict:
-      vs_verify: verify 检查'测试通过+产出匹配', bdd-evaluate 检查'行为符合 spec'。互补, 不冲突
     methodology: bdd
   bdd-reconcile:
     skill: bdd-reconcile
@@ -456,9 +428,6 @@ tool_library:
 
       '
     exit: model.md 已更新 AND 与 CONTEXT.md 术语一致 AND 与 ADR 决策一致
-    deconflict:
-      vs_CONTEXT_md: CONTEXT.md = 术语表+项目约定, model.md = 领域结构+关系。互补
-      vs_ADR: ADR = 单次决策记录, model.md = 当前聚合状态
     methodology: ddd
 states:
   assess:

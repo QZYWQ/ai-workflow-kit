@@ -216,10 +216,7 @@ behavior:
     behavior: "不自动升级——输出 [METHODOLOGY SUGGEST] 等待用户确认"
     cooldown: "建议被拒绝后, 30分钟内不再建议相同升级"
     signal_checks:
-      domain_richness: "CONTEXT.md 领域术语 ≥10? 或代码中 ≥5 个业务规则函数? → 建议 DDD passive→active"
-      cross_module_growth: "最近 10 次提交新增 ≥3 跨模块 import? gitnexus impact 频繁 HIGH? → 建议 BDD+DDD active"
-      behavior_regression: "最近修复的 bug ≥2 个是行为偏差? 用户说 '行为不符合预期'? → 建议 BDD active"
-      team_scale: "项目 ≥2 活跃贡献者? PR review 中有行为理解不一致? → 建议 BDD active"
+      generic: "检测到项目复杂度增长信号(文件增长/跨模块引用/行为回归)时 → 建议对应方法论升级。具体判断由接管时的 phase+context 综合评估。"
     check_on:
       - "接管完成后(与 phase detection 同时)"
       - "plan 状态进入时"

@@ -1,280 +1,228 @@
-# Methodology Activation — 方法学动态激活协议 v1.0
-# 按项目类型、开发阶段、复杂度信号智能激活/关闭方法学。
-# 替代"全量加载+skip 过滤"模式，改为"按需激活+动态切换"。
 spec:
   name: methodology-activation
-  version: "1.0"
+  version: '1.0'
   entry: profile
   extends: intelligent-takeover
-
-# ═══════════════════════════════════════════
-# 方法学定义
-# ═══════════════════════════════════════════
 methodologies:
   tdd:
-    description: "测试驱动开发 — 单元层 red-green-refactor"
-    tools: [tdd]
-    activation: always       # 基础约束，始终激活。overhead 极低。
+    description: 测试驱动开发 — 单元层 red-green-refactor
+    tools:
+    - tdd
+    activation: always
     levels:
       active:
-        condition: "路径 D implement 状态"
-        behavior: "完整 red-green-refactor 协议, 禁止横切"
+        condition: 路径 D implement 状态
+        behavior: 完整 red-green-refactor 协议, 禁止横切
       passive:
-        condition: "路径 D 但非 implement, 或路径 E bugfix"
-        behavior: "写测试但不强制 red-green-refactor 锁步"
-      off:
-        condition: "路径 A/B/C/F"
-        behavior: "不提测试要求"
-
+        condition: 路径 D 但非 implement, 或路径 E bugfix
+        behavior: 写测试但不强制 red-green-refactor 锁步
+      false:
+        condition: 路径 A/B/C/F
+        behavior: 不提测试要求
   bdd:
-    description: "行为驱动开发 — 验收层 Given-When-Then"
-    tools: [bdd-acceptance, bdd-evaluate, bdd-reconcile]
-    activation: conditional   # 有条件激活
-    conditions:
-      require_all:            # 全部满足 → active
-        - "路径 D"
-        - "任务涉及用户可见行为"
-      require_any:            # 任一满足 → 考虑激活
-        - "跨模块交互(≥2模块)"
-        - "新功能(非重构/非 bugfix)"
-        - "团队协作(多人项目)"
-      inhibit:                # 任一满足 → 强制 off
-        - "原型阶段(代码会被丢弃)"
-        - "纯内部重构(无行为变更)"
-        - "配置修改/文档更新"
-        - "单文件修改且无外部接口变更"
-      suggest:                # 任一满足 → 建议激活(passive→active 升级)
-        - "项目进入生产阶段"
-        - "外部 API/UI 正在变更"
-        - "最近 3 次提交涉及行为回归"
-    levels:
-      active:
-        behavior: "自动生成 .feature 文件, 强制行为验收, 需求变更级联追踪"
-      passive:
-        behavior: "接受手动 .feature 文件, 建议但不强制行为验收, bdd-reconcile 可用但不自动触发"
-      off:
-        behavior: "不加载 BDD 工具, 不检查行为覆盖"
-
-  ddd:
-    description: "领域驱动设计 — 战术层 Entity/VO/Aggregate/BoundedContext"
-    tools: [ddd-tenets, ddd-model]
+    description: 行为驱动开发 — 验收层 Given-When-Then
+    tools:
+    - bdd-acceptance
+    - bdd-evaluate
+    - bdd-reconcile
     activation: conditional
     conditions:
       require_all:
-        - "路径 D 或 F"
+      - 路径 D
+      - 任务涉及用户可见行为
       require_any:
-        - "新领域概念(≥3个新实体)"
-        - "brownfield 首次建立领域模型"
-        - "架构设计阶段"
+      - 跨模块交互(≥2模块)
+      - 新功能(非重构/非 bugfix)
+      - 团队协作(多人项目)
       inhibit:
-        - "纯 CRUD(无领域逻辑)"
-        - "简单工具/脚本项目(文件<20 且无领域术语)"
-        - "原型阶段"
+      - 原型阶段(代码会被丢弃)
+      - 纯内部重构(无行为变更)
+      - 配置修改/文档更新
+      - 单文件修改且无外部接口变更
       suggest:
-        - "文件数增长 ≥50% 且无 model.md"
-        - "多个 Aggregate 跨模块引用"
-        - "项目从 prototype 进入 mvp 阶段"
+      - 项目进入生产阶段
+      - 外部 API/UI 正在变更
+      - 最近 3 次提交涉及行为回归
     levels:
       active:
-        behavior: "强制 Entity/VO/Aggregate 分类, 限界上下文边界检查, model.md 持久化"
+        behavior: 自动生成 .feature 文件, 强制行为验收, 需求变更级联追踪
       passive:
-        behavior: "建议领域分类但不强制, [DDD SUGGEST] 而非 [DDD VIOLATION]"
-      off:
-        behavior: "不加载 DDD 工具, 不检查领域结构"
-
-  verify_full:
-    description: "完整验证套件 — 安全审计+多 agent 审查"
-    tools: [oh-my-claude-security-auditor, oh-my-claude-code-reviewer, oh-my-claude-validator]
+        behavior: 接受手动 .feature 文件, 建议但不强制行为验收, bdd-reconcile 可用但不自动触发
+      false:
+        behavior: 不加载 BDD 工具, 不检查行为覆盖
+  ddd:
+    description: 领域驱动设计 — 战术层 Entity/VO/Aggregate/BoundedContext
+    tools:
+    - ddd-tenets
+    - ddd-model
     activation: conditional
     conditions:
       require_all:
-        - "生产阶段 或 涉及认证/授权/加密/外部输入"
+      - 路径 D 或 F
       require_any:
-        - "PR 提交前"
-        - "用户说 'security review'"
+      - 新领域概念(≥3个新实体)
+      - brownfield 首次建立领域模型
+      - 架构设计阶段
       inhibit:
-        - "原型阶段"
-        - "单文件纯配置修改"
+      - 纯 CRUD(无领域逻辑)
+      - 简单工具/脚本项目(文件<20 且无领域术语)
+      - 原型阶段
+      suggest:
+      - 文件数增长 ≥50% 且无 model.md
+      - 多个 Aggregate 跨模块引用
+      - 项目从 prototype 进入 mvp 阶段
     levels:
       active:
-        behavior: "全验证套件: security-auditor + code-reviewer + validator"
+        behavior: 强制 Entity/VO/Aggregate 分类, 限界上下文边界检查, model.md 持久化
       passive:
-        behavior: "仅 validator(测试/lint), 跳过 security-auditor 和 code-reviewer"
-      off:
-        behavior: "基本验证(verify skill + detect_changes)"
-
-# ═══════════════════════════════════════════
-# 开发阶段定义（接管 Layer 5）
-# ═══════════════════════════════════════════
+        behavior: 建议领域分类但不强制, [DDD SUGGEST] 而非 [DDD VIOLATION]
+      false:
+        behavior: 不加载 DDD 工具, 不检查领域结构
+  verify_full:
+    description: 完整验证套件 — 安全审计+多 agent 审查
+    tools:
+    - oh-my-claude-security-auditor
+    - oh-my-claude-code-reviewer
+    - oh-my-claude-validator
+    activation: conditional
+    conditions:
+      require_all:
+      - 生产阶段 或 涉及认证/授权/加密/外部输入
+      require_any:
+      - PR 提交前
+      - 用户说 'security review'
+      inhibit:
+      - 原型阶段
+      - 单文件纯配置修改
+    levels:
+      active:
+        behavior: '全验证套件: security-auditor + code-reviewer + validator'
+      passive:
+        behavior: 仅 validator(测试/lint), 跳过 security-auditor 和 code-reviewer
+      false:
+        behavior: 基本验证(verify skill + detect_changes)
 phases:
   toolkit:
     detect:
-      - "项目是库/CLI/工具/SDK(有 package.json/bin 或 setup.py 或 go.mod 且有 main 或 Cargo.toml)"
-      - "无用户界面, 无 Web 服务, 无 API endpoint"
-      - "用户说 '库'/'工具'/'CLI'/'SDK'/'package'"
-      - "项目自身是开发工具链的一部分(如 linter/compiler/workflow kit)"
+    - 项目是库/CLI/工具/SDK(有 package.json/bin 或 setup.py 或 go.mod 且有 main 或 Cargo.toml)
+    - 无用户界面, 无 Web 服务, 无 API endpoint
+    - 用户说 '库'/'工具'/'CLI'/'SDK'/'package'
+    - 项目自身是开发工具链的一部分(如 linter/compiler/workflow kit)
     not_detect:
-      - "有 HTML 模板目录(templates/ static/ public/)"
-      - "有 Dockerfile 或 docker-compose 或 k8s 配置"
-      - "有 Web 服务入口(src/server api/routes/ app.py/ main.go with http)"
+    - 有 HTML 模板目录(templates/ static/ public/)
+    - 有 Dockerfile 或 docker-compose 或 k8s 配置
+    - 有 Web 服务入口(src/server api/routes/ app.py/ main.go with http)
     default_activation:
-      tdd: "active"
-      bdd: "off"
-      ddd: "passive"
-      verify_full: "passive"
-    rationale: "库和工具靠测试保证质量, 不需要行为验收 spec。领域模型在库设计中次要。"
-
+      tdd: active
+      bdd: 'off'
+      ddd: passive
+      verify_full: passive
+    rationale: 库和工具靠测试保证质量, 不需要行为验收 spec。领域模型在库设计中次要。
   prototype:
     detect:
-      - "项目文件 < 20 AND 无 CI 配置 AND 无生产部署配置"
-      - "用户明确说 '原型'/'prototype'/'快速验证'/'试试'"
-      - "git log 显示 < 5 次提交 AND 无 tag"
-      - "NOT toolkit——不是库/工具项目"
+    - 项目文件 < 20 AND 无 CI 配置 AND 无生产部署配置
+    - 用户明确说 '原型'/'prototype'/'快速验证'/'试试'
+    - git log 显示 < 5 次提交 AND 无 tag
+    - NOT toolkit——不是库/工具项目
     default_activation:
-      tdd: "passive"
-      bdd: "off"
-      ddd: "passive"
-      verify_full: "off"
-    rationale: "快速迭代, 代码可能丢弃。方法学 overhead 大于收益。"
-
+      tdd: passive
+      bdd: 'off'
+      ddd: passive
+      verify_full: 'off'
+    rationale: 快速迭代, 代码可能丢弃。方法学 overhead 大于收益。
   mvp:
     detect:
-      - "项目文件 20-100 AND 有基本测试 AND 无正式发布"
-      - "用户说 'MVP'/'上线'/'发布'/'第一版'"
-      - "有 CI 但无 CD 或生产监控"
+    - 项目文件 20-100 AND 有基本测试 AND 无正式发布
+    - 用户说 'MVP'/'上线'/'发布'/'第一版'
+    - 有 CI 但无 CD 或生产监控
     default_activation:
-      tdd: "active"
-      bdd: "passive"
-      ddd: "active"
-      verify_full: "passive"
-    rationale: "代码会被使用, 需要测试和基本领域建模。行为验收可手动。"
-
+      tdd: active
+      bdd: passive
+      ddd: active
+      verify_full: passive
+    rationale: 代码会被使用, 需要测试和基本领域建模。行为验收可手动。
   production:
     detect:
-      - "有 CI/CD pipeline AND 有生产部署配置"
-      - "git tag 存在(版本发布)"
-      - "用户说 '生产'/'production'/'正式环境'"
-      - "有监控/告警配置"
+    - 有 CI/CD pipeline AND 有生产部署配置
+    - git tag 存在(版本发布)
+    - 用户说 '生产'/'production'/'正式环境'
+    - 有监控/告警配置
     default_activation:
-      tdd: "active"
-      bdd: "active"
-      ddd: "active"
-      verify_full: "active"
-    rationale: "用户在生产环境依赖此代码。所有验收必须自动化, 安全审查必须通过。"
-
+      tdd: active
+      bdd: active
+      ddd: active
+      verify_full: active
+    rationale: 用户在生产环境依赖此代码。所有验收必须自动化, 安全审查必须通过。
   maintenance:
     detect:
-      - "项目文件 >100 AND 最近提交主要是 bugfix/小改动"
-      - "最近 30 天新增文件 < 5% 总文件数"
-      - "用户说 '维护'/'修 bug'/'小改动'"
+    - 项目文件 >100 AND 最近提交主要是 bugfix/小改动
+    - 最近 30 天新增文件 < 5% 总文件数
+    - 用户说 '维护'/'修 bug'/'小改动'
     default_activation:
-      tdd: "active"
-      bdd: "passive"
-      ddd: "passive"
-      verify_full: "passive"
-    rationale: "稳定运行, 重点是防回归。行为 spec 维护但不新增, 领域模型稳定。"
-
+      tdd: active
+      bdd: passive
+      ddd: passive
+      verify_full: passive
+    rationale: 稳定运行, 重点是防回归。行为 spec 维护但不新增, 领域模型稳定。
   unknown:
-    detect: "无法匹配上述任何阶段"
+    detect: 无法匹配上述任何阶段
     default_activation:
-      tdd: "active"
-      bdd: "passive"
-      ddd: "passive"
-      verify_full: "passive"
-    rationale: "保守默认——测试强制, 其他可选。"
-
-# ═══════════════════════════════════════════
-# 复杂度信号（自动检测+建议激活升级）
-# ═══════════════════════════════════════════
+      tdd: active
+      bdd: passive
+      ddd: passive
+      verify_full: passive
+    rationale: 保守默认——测试强制, 其他可选。
 complexity_signals:
-  domain_richness:
-    description: "领域逻辑复杂度"
-    signals:
-      - "CONTEXT.md 包含 ≥10 个领域术语"
-      - "代码中有 ≥5 个业务规则函数(非 CRUD)"
-      - "用户谈论 '领域'/'业务规则'/'聚合'"
-    on_detect: "建议 DDD active。如果当前 passive → 询问是否升级。"
-
-  cross_module_growth:
-    description: "跨模块引用增长"
-    signals:
-      - "最近 10 次提交新增 ≥3 个跨模块 import"
-      - "gitnexus impact 频繁返回 HIGH"
-    on_detect: "建议 BDD active + DDD active。跨模块交互需要行为契约。"
-
-  behavior_regression:
-    description: "行为回归风险"
-    signals:
-      - "最近修复的 bug 中 ≥2 个是行为偏差(不是 crash/error)"
-      - "用户报告 '行为不符合预期'"
-    on_detect: "建议 BDD active。行为偏差 = 缺少可执行的行为 spec。"
-
-  team_scale:
-    description: "团队规模增长"
-    signals:
-      - "项目有 ≥2 个活跃贡献者"
-      - "PR review 中有行为理解不一致的讨论"
-    on_detect: "建议 BDD active。多人协作需要 .feature 文件作为行为契约。"
-
   phase_transition:
-    description: "阶段转换"
+    description: 阶段转换
     signals:
-      - "prototype → mvp: 项目文件增长 ≥200%, 或首次 CI 配置"
-      - "mvp → production: 首次 git tag, 或生产部署配置出现"
-    on_detect: "自动重新评估 phase, 更新所有 methodology 激活级别。输出 Phase Transition Card。"
-
-# ═══════════════════════════════════════════
-# 动态切换机制
-# ═══════════════════════════════════════════
+    - 'prototype → mvp: 项目文件增长 ≥200%, 或首次 CI 配置'
+    - 'mvp → production: 首次 git tag, 或生产部署配置出现'
+    on_detect: 自动重新评估 phase, 更新所有 methodology 激活级别。输出 Phase Transition Card。
 dynamic_toggle:
   user_commands:
-    activate: "用户说 '激活 BDD'/'开启 DDD'/'启用完整验证' → 目标 methodology → active"
-    deactivate: "用户说 '关闭 DDD'/'跳过 BDD'/'简化验证' → 目标 methodology → off 或 passive"
-    temporary: "用户说 '这次不用 TDD' → 仅当前任务降级, 下次任务恢复默认"
-
+    activate: 用户说 '激活 BDD'/'开启 DDD'/'启用完整验证' → 目标 methodology → active
+    deactivate: 用户说 '关闭 DDD'/'跳过 BDD'/'简化验证' → 目标 methodology → off 或 passive
+    temporary: 用户说 '这次不用 TDD' → 仅当前任务降级, 下次任务恢复默认
   auto_suggest:
-    trigger: "complexity_signal 被检测到"
-    behavior: |
-      不自动升级 activation——仅建议, 等待用户确认。
-      输出: "[METHODOLOGY SUGGEST] <signal> → 建议 <methodology> 从 <current_level> 升级到 <target_level>。确认?"
-    user_response: "确认 → 升级。拒绝 → 保持当前, 30 分钟内不再建议相同升级。"
+    trigger: complexity_signal 被检测到
+    behavior: '不自动升级 activation——仅建议, 等待用户确认。
 
+      输出: "[METHODOLOGY SUGGEST] <signal> → 建议 <methodology> 从 <current_level> 升级到
+      <target_level>。确认?"
+
+      '
+    user_response: 确认 → 升级。拒绝 → 保持当前, 30 分钟内不再建议相同升级。
   phase_auto:
-    trigger: "phase_transition signal 被检测到"
-    behavior: |
-      阶段转换自动更新所有 methodology 到新阶段的 default_activation。
-      输出 Phase Transition Card, 逐条列出变更:
-        BDD: off → active (原型→生产)
-        DDD: passive → active (MVP→生产)
-        verify_full: "passive" → active (MVP→生产)
-
+    trigger: phase_transition signal 被检测到
+    behavior: "阶段转换自动更新所有 methodology 到新阶段的 default_activation。\n输出 Phase Transition\
+      \ Card, 逐条列出变更:\n  BDD: off → active (原型→生产)\n  DDD: passive → active (MVP→生产)\n\
+      \  verify_full: \"passive\" → active (MVP→生产)\n"
   state_aware:
-    trigger: "状态机进入新状态"
-    behavior: |
-      根据当前状态动态调整激活级别:
+    trigger: 状态机进入新状态
+    behavior: '根据当前状态动态调整激活级别:
+
       - assess/classify: 所有 methodology off(不需要)
+
       - plan: 根据 phase + complexity 评估, DDD/BDD active
+
       - implement: TDD active, DDD active(约束层)
+
       - verify: BDD active(如有 .feature), verify_full active(如生产)
+
       - done: 所有 methodology off
 
-# ═══════════════════════════════════════════
-# 激活状态输出: Methodology Card
-# ═══════════════════════════════════════════
+      '
 methodology_card:
-  format: |
-    ## Methodology Card
-    phase: prototype|mvp|production|maintenance
-    active:
-      tdd: active|passive|off
-      bdd: active|passive|off
-      ddd: active|passive|off
-      verify_full: active|passive|off
-    available_tools: [tdd, ddd-tenets, ...]
-    inactive_tools: [bdd-acceptance, bdd-evaluate, ...]
-    suggestions:
-      - "[domain_richness] 建议 DDD passive→active。确认?"
-  usage: |
-    注入到路径 spec 的上下文。路径 spec 的 tools_from_library 只包含
+  format: "## Methodology Card\nphase: prototype|mvp|production|maintenance\nactive:\n\
+    \  tdd: active|passive|off\n  bdd: active|passive|off\n  ddd: active|passive|off\n\
+    \  verify_full: active|passive|off\navailable_tools: [tdd, ddd-tenets, ...]\n\
+    inactive_tools: [bdd-acceptance, bdd-evaluate, ...]\nsuggestions:\n  - \"[domain_richness]\
+    \ 建议 DDD passive→active。确认?\"\n"
+  usage: '注入到路径 spec 的上下文。路径 spec 的 tools_from_library 只包含
+
     methodology_card.available_tools 中的工具。
+
     如果工具不在 available_tools 中 → 视为不存在, 不评估其 trigger。
+
+    '

@@ -77,7 +77,7 @@ for name, spec in specs.items():
         tools = state_conf.get("tools_from_library", [])
         for tool in tools:
             check(tool in tool_names or tool in ["tdd", "diagnose", "grill-with-docs",
-                  "prototype", "verify", "grill-me", "handoff", "to-prd", "to-issues",
+                  "prototype", "verify", "handoff", "to-prd", "to-issues",
                   "caveman", "worldquant-brain-alpha-engineering"],
                   f"{name}.yaml → {state_name}.tools_from_library: '{tool}' 不在 task-router 工具库中")
 
