@@ -47,8 +47,8 @@ states:
       不是 TDD 的替代，是 TDD 每步实现时的类型检查。禁止以 DDD 为理由跳过 TDD 步骤。'
     - 'implement → review 回退上限: 3 次。第 3 次仍未通过 → 暂停+汇报根因，不等用户决策不继续。'
     - 'scope creep 检测: 如果实际变更范围 ≥ origin_plan_scope × 2(文件数或模块数)，暂停并输出 [SCOPE CREEP]
-      警告。建议: 1) 回 plan 重新评估 bdd-acceptance 是否需要更新 spec; 2) 检查 ddd-model 是否需要更新领域模型。用户可
-      override 继续。'
+      警告。建议: 1) 回 plan 重新评估 bdd-acceptance 是否需要更新 spec; 2) 检查 ddd-model 是否需要更新领域模型;
+      3) 重新生成 Agent Card(变更范围可能改变适合的 agent 模式)。用户可 override 继续。'
     - 'Agent Card 感知: paired 模式 → 实现后自动触发 review(准备对抗循环); swarm 模式 → 实现后触发并行审查; e2e_test
       模式 → UI 改动时自动截图。见 agent-orchestration.yaml。'
   review:
