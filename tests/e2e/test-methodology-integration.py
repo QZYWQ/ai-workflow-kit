@@ -339,7 +339,15 @@ class SimulationEngine:
         spec = path_specs.get(path)
         if not spec:
             return []
-        return spec.get("states", {}).get(state, {}).get("tools_from_library", [])
+        state_conf = spec.get("states", {}).get(state, {})
+        # v2.7: mode_gated_tools — basic 模式 = 默认工具集
+        mode_tools = state_conf.get("mode_gated_tools", {})
+        if mode_tools:
+            basic = mode_tools.get("basic", {})
+            mode_list = basic.get("tools", [])
+            shared = state_conf.get("shared_tools", [])
+            return mode_list + shared
+        return state_conf.get("tools_from_library", [])
 
 
 # ═══════════════════════════════════════════

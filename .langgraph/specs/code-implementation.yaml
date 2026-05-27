@@ -42,17 +42,26 @@ states:
       - "Agent Card 感知: paired 模式 → 实现后自动触发 review(准备对抗循环); swarm 模式 → 实现后触发并行审查; e2e_test 模式 → UI 改动时自动截图。见 agent-orchestration.yaml。"
 
   review:
-    on_enter: "审查变更的正确性+副作用。回退计数器: implement_retries=0。"
-    tools_from_library:
-      - langgraph-cli-review         # per-file 即时审查
-      - gitnexus-detect-changes      # MUST: 提交前
-      - oh-my-claude-code-reviewer   # PR diff 级审查
-      - oh-my-claude-validator       # 测试/lint 验证
-      - langgraph-cli-pr             # PR 描述生成
-      - bdd-evaluate                 # trigger: 有 .feature 文件 → 行为验收对照
+    on_enter: "根据 Agent Card 选择 review 模式。回退计数器: implement_retries=0。"
+    mode_gated_tools:
+      basic:
+        tools: [langgraph-cli-review, gitnexus-detect-changes, oh-my-claude-code-reviewer, oh-my-claude-validator, langgraph-cli-pr, bdd-evaluate]
+        flow: "单次审查: 跑完所有工具 → 全部通过 → done。P0 → 回 implement。"
+      paired:
+        tools: [oh-my-claude-code-reviewer, oh-my-claude-validator]
+        flow: "对抗收敛: review→发现→implement修复→review再查 → 最多3轮 → 收敛(done)或deadlock(人工裁决)"
+        convergence: "review 无新发现 AND validator 通过"
+      swarm:
+        tools: [oh-my-claude-security-auditor, oh-my-claude-code-reviewer, oh-my-claude-validator]
+        flow: "并行审查: parallel(security+quality+validation) → synthesize → P0→回implement, 无P0→done"
+        max_rounds: 2
+      e2e_test:
+        tools: "当前模式的所有工具 + playwright + vision-mcp"
+        flow: "在现有 review 基础上加 playwright 截图 + vision 对比"
+    shared_tools: [gitnexus-detect-changes, langgraph-cli-pr, bdd-evaluate]
     rules:
-      - "P0 问题 → implement_retries += 1。if implement_retries > 3 → 暂停+汇报根因。else → 回 implement"
-      - "gitnexus-detect-changes 超预期 → implement_retries += 1。if implement_retries > 3 → 暂停+汇报根因。else → 回 implement"
-      - "Agent Card 收敛检查: paired 模式 → 检查 review 是否无新发现(收敛) 或 达 max_rounds(deadlock→人工裁决); swarm 模式 → 检查所有 agent 完成 + synthesis 完成; e2e_test 模式 → 检查 playwright 截图 + vision 对比结果。"
+      - "review 回退: 当前模式的收敛条件未满足 → implement_retries += 1 → 回 implement。不计 Agent Card 的 max_rounds。"
+      - "implement_retries > 3 → [DEADLOCK] 暂停+汇报根因，等用户裁决。不自动继续。"
+      - "gitnexus-detect-changes 超预期 → 立即回 implement（不计入 retries，范围问题不是质量问题）"
       - "bdd-evaluate 失败 → implement_retries += 1。if implement_retries > 3 → 暂停+汇报根因。else → 回 implement"
     exit: "review PASS AND detect_changes 范围正常 AND 无 P0 AND implement_retries ≤ 3"
