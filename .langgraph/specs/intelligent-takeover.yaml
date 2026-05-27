@@ -134,53 +134,22 @@ phase:
       detect: 无法匹配上述
   output: phase=toolkit|prototype|mvp|production|maintenance|unknown
   refresh_trigger:
-    - 首次 release (git tag 出现)
-    - CI/CD 配置新增
-    - 项目文件数增长 >200%
-    - 用户说 进入生产/发布版本
-    - 每个新会话开始时
+  - 首次 release (git tag 出现)
+  - CI/CD 配置新增
+  - 项目文件数增长 >200%
+  - 用户说 进入生产/发布版本
+  - 每个新会话开始时
 takeover_card:
-  format: '## Takeover Card
-
-    - lifecycle: newborn|growing|mature
-
-    - activity:  active|idle|dormant
-
-    - integrity: clean|dirty|broken
-
-    - recovery:  hot|warm|cold
-
-    - health:    full|degraded|broken
-
-    - phase:     toolkit|prototype|mvp|production|maintenance|unknown
-
-    - rules:     N hard rules loaded
-
-    - active_task: <from state.json>
-
-    - recommendation: <一句话建议下一步>
-
-    '
+  format: "## Takeover Card\n- lifecycle: newborn|growing|mature\n- activity:  active|idle|dormant\n\
+    - integrity: clean|dirty|broken\n- recovery:  hot|warm|cold\n- health:    full|degraded|broken\n\
+    - phase:     toolkit|prototype|mvp|production|maintenance|unknown\n- rules:  \
+    \   N hard rules loaded\n- active_task: <from state.json>\n- agent:      basic|paired|swarm|e2e_test\
+    \ (from Agent Card)\n    - recommendation: <一句话建议下一步>\n"
 methodology_card:
-  format: '## Methodology Card
-
-    phase: toolkit|prototype|mvp|production|maintenance
-
-    tdd: active|passive|off
-
-    bdd: active|passive|off
-
-    ddd: active|passive|off
-
-    verify_full: active|passive|off
-
-    available_tools: [当前可用的工具列表]
-
-    inactive_tools: [当前不可用的工具列表]
-
-    suggestions: [auto-detect 建议升级的 methodology]
-
-    '
+  format: "## Methodology Card\nphase: toolkit|prototype|mvp|production|maintenance\n\
+    tdd: active|passive|off\nbdd: active|passive|off\nddd: active|passive|off\nverify_full:\
+    \ active|passive|off\navailable_tools: [当前可用的工具列表]\nagent_mode: basic|paired|swarm|e2e_test\n\
+    \    inactive_tools: [当前不可用的工具列表]\nsuggestions: [auto-detect 建议升级的 methodology]\n"
   usage: '注入到路径 spec 上下文。路径 spec 的 tools_from_library 只包含
 
     methodology_card.available_tools 中的工具。不可用工具视为不存在。

@@ -1,67 +1,92 @@
-# Code Implementation — 路径 D
 spec:
   name: code-implementation
-  version: "2.2"
+  version: '2.2'
   extends: task-router
   path: D
-  triggers: ["实现", "开发", "新功能", "重构", "写代码", "添加模块", "加功能", "修改代码", "写库"]
-
+  triggers:
+  - 实现
+  - 开发
+  - 新功能
+  - 重构
+  - 写代码
+  - 添加模块
+  - 加功能
+  - 修改代码
+  - 写库
 states:
   plan:
-    on_enter: "理解需求→查已有实现→设计方案。禁止编码。"
+    on_enter: 理解需求→查已有实现→设计方案。禁止编码。
     tools_from_library:
-      - grill-with-docs        # trigger: CONTEXT.md or ≥3 files or fuzzy terms
-      - gitnexus-context       # MUST: 理解任何符号前
-      - langgraph-cli-analyze  # 陌生项目 or F 路径
-      - oh-my-claude-advisor   # 复杂任务 gap 分析
-      - bdd-acceptance         # trigger: plan 完成, 涉及用户可见行为 → 生成 .feature
-      - ddd-tenets             # trigger: 新领域概念(≥3实体) → DDD 结构约束
-      - ddd-model              # trigger: ddd-tenets 完成后 → 持久化领域模型
-      - agent-orchestration    # trigger: plan 完成 → 根据项目类型+改动规模生成 Agent Card
+    - grill-with-docs
+    - gitnexus-context
+    - langgraph-cli-analyze
+    - oh-my-claude-advisor
+    - bdd-acceptance
+    - ddd-tenets
+    - ddd-model
+    - agent-orchestration
     rules:
-      - "gitnexus-context: 修改任何函数/类前 MUST 查"
-      - "grill-with-docs 的 exit 条件满足前 → 不进入 implement"
-      - "工具执行顺序: grill-with-docs(术语收敛) → ddd-tenets(领域分类) → ddd-model(持久化模型) → bdd-acceptance(行为spec)。后一步依赖前一步的产出。禁止并行或乱序。"
-      - "grill-with-docs exit → ddd-tenets exit → ddd-model exit → bdd-acceptance exit → 才可进入 implement"
-    output: "设计文档 | .feature文件 | 领域模型标注 | 工具库检查清单"
-
+    - 'gitnexus-context: 修改任何函数/类前 MUST 查'
+    - grill-with-docs 的 exit 条件满足前 → 不进入 implement
+    - '工具执行顺序: grill-with-docs(术语收敛) → ddd-tenets(领域分类) → ddd-model(持久化模型) → bdd-acceptance(行为spec)。后一步依赖前一步的产出。禁止并行或乱序。'
+    - grill-with-docs exit → ddd-tenets exit → ddd-model exit → bdd-acceptance exit
+      → 才可进入 implement
+    output: 设计文档 | .feature文件 | 领域模型标注 | 工具库检查清单
   implement:
-    on_enter: "TDD: 测试→失败→实现→通过。每步骤标记 [✓]。DDD 约束: 新建类型标注 Entity/VO/Aggregate。"
+    on_enter: 'TDD: 测试→失败→实现→通过。每步骤标记 [✓]。DDD 约束: 新建类型标注 Entity/VO/Aggregate。'
     tools_from_library:
-      - tdd                    # trigger: 新功能/非琐碎 bugfix
-      - gitnexus-impact        # MUST: 编辑任何符号前
-      - prototype              # trigger: 数据模型不确定 or UI 多方案
-      - ddd-tenets             # 实现时自检: Entity vs VO? 跨 Bounded Context?
+    - tdd
+    - gitnexus-impact
+    - prototype
+    - ddd-tenets
     rules:
-      - "gitnexus-impact: 编辑前 MUST。HIGH/CRITICAL → 暂停+汇报"
-      - "tdd protocol: 每步 test→fail→impl→pass→refactor。禁止横切"
-      - "完成每步: [✓ N/M]"
-      - "DDD 与 TDD 分工: DDD 约束回答'这个类型是什么'(Entity/VO/Aggregate)——每类型标注一次；TDD 约束回答'这个功能对吗'(test→impl→refactor)——每步骤一次。DDD 不是 TDD 的替代，是 TDD 每步实现时的类型检查。禁止以 DDD 为理由跳过 TDD 步骤。"
-      - "implement → review 回退上限: 3 次。第 3 次仍未通过 → 暂停+汇报根因，不等用户决策不继续。"
-      - "scope creep 检测: 如果实际变更范围 ≥ origin_plan_scope × 2(文件数或模块数)，暂停并输出 [SCOPE CREEP] 警告。建议: 1) 回 plan 重新评估 bdd-acceptance 是否需要更新 spec; 2) 检查 ddd-model 是否需要更新领域模型。用户可 override 继续。"
-      - "Agent Card 感知: paired 模式 → 实现后自动触发 review(准备对抗循环); swarm 模式 → 实现后触发并行审查; e2e_test 模式 → UI 改动时自动截图。见 agent-orchestration.yaml。"
-
+    - 'gitnexus-impact: 编辑前 MUST。HIGH/CRITICAL → 暂停+汇报'
+    - 'tdd protocol: 每步 test→fail→impl→pass→refactor。禁止横切'
+    - '完成每步: [✓ N/M]'
+    - 'DDD 与 TDD 分工: DDD 约束回答''这个类型是什么''(Entity/VO/Aggregate)——每类型标注一次；TDD 约束回答''这个功能对吗''(test→impl→refactor)——每步骤一次。DDD
+      不是 TDD 的替代，是 TDD 每步实现时的类型检查。禁止以 DDD 为理由跳过 TDD 步骤。'
+    - 'implement → review 回退上限: 3 次。第 3 次仍未通过 → 暂停+汇报根因，不等用户决策不继续。'
+    - 'scope creep 检测: 如果实际变更范围 ≥ origin_plan_scope × 2(文件数或模块数)，暂停并输出 [SCOPE CREEP]
+      警告。建议: 1) 回 plan 重新评估 bdd-acceptance 是否需要更新 spec; 2) 检查 ddd-model 是否需要更新领域模型。用户可
+      override 继续。'
+    - 'Agent Card 感知: paired 模式 → 实现后自动触发 review(准备对抗循环); swarm 模式 → 实现后触发并行审查; e2e_test
+      模式 → UI 改动时自动截图。见 agent-orchestration.yaml。'
   review:
-    on_enter: "根据 Agent Card 选择 review 模式。回退计数器: implement_retries=0。"
+    on_enter: '根据 Agent Card 选择 review 模式。回退计数器: implement_retries=0。'
     mode_gated_tools:
       basic:
-        tools: [langgraph-cli-review, gitnexus-detect-changes, oh-my-claude-code-reviewer, oh-my-claude-validator, langgraph-cli-pr, bdd-evaluate]
-        flow: "单次审查: 跑完所有工具 → 全部通过 → done。P0 → 回 implement。"
+        tools:
+        - langgraph-cli-review
+        - oh-my-claude-code-reviewer
+        - oh-my-claude-validator
+        flow: '单次审查: 跑完所有工具 → 全部通过 → done。P0 → 回 implement。'
       paired:
-        tools: [oh-my-claude-code-reviewer, oh-my-claude-validator]
-        flow: "对抗收敛: review→发现→implement修复→review再查 → 最多3轮 → 收敛(done)或deadlock(人工裁决)"
-        convergence: "review 无新发现 AND validator 通过"
+        tools:
+        - oh-my-claude-code-reviewer
+        - oh-my-claude-validator
+        flow: '对抗收敛: review→发现→implement修复→review再查 → 最多3轮 → 收敛(done)或deadlock(人工裁决)'
+        convergence: review 无新发现 AND validator 通过
       swarm:
-        tools: [oh-my-claude-security-auditor, oh-my-claude-code-reviewer, oh-my-claude-validator]
-        flow: "并行审查: parallel(security+quality+validation) → synthesize → P0→回implement, 无P0→done"
+        tools:
+        - oh-my-claude-security-auditor
+        - oh-my-claude-code-reviewer
+        - oh-my-claude-validator
+        flow: '并行审查: parallel(security+quality+validation) → synthesize → P0→回implement,
+          无P0→done'
         max_rounds: 2
       e2e_test:
-        tools: "当前模式的所有工具 + playwright + vision-mcp"
-        flow: "在现有 review 基础上加 playwright 截图 + vision 对比"
-    shared_tools: [gitnexus-detect-changes, langgraph-cli-pr, bdd-evaluate]
+        tools: 当前模式的所有工具 + playwright + vision-mcp
+        flow: 在现有 review 基础上加 playwright 截图 + vision 对比
+    shared_tools:
+    - gitnexus-detect-changes
+    - langgraph-cli-pr
+    - bdd-evaluate
     rules:
-      - "review 回退: 当前模式的收敛条件未满足 → implement_retries += 1 → 回 implement。不计 Agent Card 的 max_rounds。"
-      - "implement_retries > 3 → [DEADLOCK] 暂停+汇报根因，等用户裁决。不自动继续。"
-      - "gitnexus-detect-changes 超预期 → 立即回 implement（不计入 retries，范围问题不是质量问题）"
-      - "bdd-evaluate 失败 → implement_retries += 1。if implement_retries > 3 → 暂停+汇报根因。else → 回 implement"
-    exit: "review PASS AND detect_changes 范围正常 AND 无 P0 AND implement_retries ≤ 3"
+    - 'review 回退: 当前模式的收敛条件未满足 → implement_retries += 1 → 回 implement。不计 Agent Card
+      的 max_rounds。'
+    - implement_retries > 3 → [DEADLOCK] 暂停+汇报根因，等用户裁决。不自动继续。
+    - gitnexus-detect-changes 超预期 → 立即回 implement（不计入 retries，范围问题不是质量问题）
+    - bdd-evaluate 失败 → implement_retries += 1。if implement_retries > 3 → 暂停+汇报根因。else
+      → 回 implement
+    exit: review PASS AND detect_changes 范围正常 AND 无 P0 AND implement_retries ≤ 3
+    shared_tools_note: shared_tools 在所有模式下都可用, 不与任何模式的 tools 重叠。每个模式的 tools 只包含该模式专属工具。

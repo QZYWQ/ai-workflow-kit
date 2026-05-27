@@ -86,6 +86,13 @@ context_assessment:
     ddd_on_pathE_vs_minimal_fix: path E 的 ddd-tenets 只读(分析已有领域结构定位根因)，不新建 Entity/重组边界。诊断工具，不是设计工具。
     state_aware_vs_user_toggle: 用户手动激活优先于 state_aware 自动关闭。如果用户在 assess 阶段说 "激活 BDD"
       → BDD=active, 进入 plan 后生效。state_aware 是默认行为, 用户覆盖是显式意图。
+    mode_gate_vs_methodology_filter: mode_gate 优先。即使 methodology_filter 将工具设为 off,
+      mode_gate 的 force_active 仍使其可用。filter 在 mode_gate 之后执行——先应用 mode_gate 强制激活,
+      再对剩余工具应用 methodology_filter。
+    greenfield_force_vs_phase_off: greenfield 模式的 force_active 覆盖所有 phase 的 off 设置。空白项目没有代码——必须设计优先,
+      不受 prototype/toolkit phase 的 BDD=off 限制。
+    convergence_vs_retries: implement_retries 是硬上限。达到上限时即使未收敛也暂停——不等用户决策不继续。convergence
+      是期望目标, retries 是安全阀。
   sub_task_flow: '每阶段直接声明: "[→ 路径 X] 理由: ≤1行", 加载对应 spec 从起始状态开始。
 
     assess 不重跑（除非子任务改变了可检测的项目状态）。
