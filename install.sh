@@ -41,26 +41,31 @@ else
         echo "  ⚠ 手动: omega setup --client claude-code"
 fi
 
-# ====== 5. Matt Pocock skills ======
-echo "→ Matt Pocock skills..."
-SKILLS_DIR="$(pwd)/.agents/skills"
-if [ -d "$SKILLS_DIR/grill-with-docs" ] && [ -d "$SKILLS_DIR/diagnose" ]; then
-    echo "  (已安装到项目)"
+# ====== 5. Matt Pocock skills (GitHub: mattpocock/skills) ======
+echo "→ Matt Pocock skills (github.com/mattpocock/skills)..."
+GLOBAL_SKILLS="$HOME/.claude/skills"
+mkdir -p "$GLOBAL_SKILLS"
+
+if [ -d "$GLOBAL_SKILLS/grill-with-docs" ] && [ -d "$GLOBAL_SKILLS/diagnose" ] && [ -d "$GLOBAL_SKILLS/tdd" ]; then
+    echo "  (已安装到全局)"
 else
-    npx --yes skills add mattpocock/skills 2>/dev/null || \
-        echo "  ⚠ 手动: npx skills add mattpocock/skills"
+    # 安装到临时目录，然后移到全局
+    TEMP_SKILLS="/tmp/mattpocock-skills-$$"
+    mkdir -p "$TEMP_SKILLS"
+    if npx --yes skills add mattpocock/skills --target "$TEMP_SKILLS" 2>/dev/null; then
+        for skill_dir in "$TEMP_SKILLS"/*/; do
+            skill_name=$(basename "$skill_dir")
+            cp -r "$skill_dir" "$GLOBAL_SKILLS/$skill_name" 2>/dev/null || true
+        done
+        rm -rf "$TEMP_SKILLS"
+        echo "  (已安装到 ~/.claude/skills/)"
+    else
+        echo "  ⚠ npx skills add 失败，手动安装:"
+        echo "    git clone https://github.com/mattpocock/skills /tmp/mp-skills"
+        echo "    cp -r /tmp/mp-skills/* ~/.claude/skills/"
+    fi
 fi
-# Copy to global so all langgraph-cli init projects can use them
-if [ -d "$SKILLS_DIR" ]; then
-    mkdir -p "$HOME/.claude/skills"
-    for skill_dir in "$SKILLS_DIR"/*/; do
-        skill_name=$(basename "$skill_dir")
-        if [ ! -e "$HOME/.claude/skills/$skill_name" ]; then
-            cp -r "$skill_dir" "$HOME/.claude/skills/$skill_name" 2>/dev/null || true
-        fi
-    done
-    echo "  (已同步到全局 ~/.claude/skills/)"
-fi
+# 不安装到项目目录——技能是全局共享的，不应进入项目 git 仓库
 
 # ====== 6. oh-my-claude ======
 echo "→ oh-my-claude..."

@@ -126,6 +126,18 @@ langgraph-cli init --deep
 └──────────────────────────────────────┘
 ```
 
+### 集成的外部工具
+
+| 工具 | 来源 | 安装方式 |
+|------|------|---------|
+| langgraph-cli | 本项目 | `install.sh` 拷贝到 `~/.local/bin/` |
+| Matt Pocock skills (grill-with-docs, tdd, diagnose, grill-me 等) | [github.com/mattpocock/skills](https://github.com/mattpocock/skills) | `npx skills add` → `~/.claude/skills/` |
+| GitNexus | [npm: gitnexus](https://www.npmjs.com/package/gitnexus) | `npm install -g gitnexus` |
+| OMEGA | [pypi: omega-memory](https://pypi.org/project/omega-memory/) | `pip install omega-memory[server]` |
+| oh-my-claude | Claude Code 插件市场 | `/plugin install oh-my-claude@oh-my-claude` |
+
+所有外部工具安装到全局（`~/.claude/`、`~/.local/`），不污染项目目录。
+
 ## 配置
 
 ### 工作流 spec（`.langgraph/specs/`）
