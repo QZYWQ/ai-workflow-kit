@@ -108,8 +108,14 @@ phase:
     - "最近 30 天 git log --diff-filter=A --name-only 的新增文件占比"
   dimensions:
     toolkit:
-      detect: "项目是库/CLI/工具/SDK(有package.json或setup.py等打包配置, 无UI/Web服务/API)"
-      markers: ["用户说 库/工具/CLI/SDK/package", "项目是开发工具链的一部分"]
+      detect: "无UI/Web服务/API endpoint + (有package.json/bin或setup.py/console_scripts或go.mod或Cargo.toml或Makefile/cmake) + 无HTML模板/static目录/Dockerfile"
+      markers: ["用户说 库/工具/CLI/SDK/package", "项目自身是开发工具链", "文件结构特征: bin/ 或 cli.py 或 main.go 等CLI入口"]
+      signals:
+        - "ls package.json 2>/dev/null && grep -q '\"bin\"' package.json"
+        - "ls setup.py pyproject.toml 2>/dev/null"
+        - "ls go.mod Cargo.toml Makefile CMakeLists.txt 2>/dev/null"
+        - "ls templates/ static/ public/ Dockerfile docker-compose*.yml 2>/dev/null → NOT toolkit"
+        - "ls src/server* src/app* api/ routes/ 2>/dev/null → NOT toolkit"
     prototype:
       detect: "文件<20 AND 无CI AND git tag为空 AND 提交<5"
       markers: ["用户说 原型/prototype/快速验证/试试"]
@@ -173,7 +179,7 @@ methodology_card:
 behavior:
   hot_recovery:
     condition: "recovery=hot AND active_task 未完成"
-    action: "直接恢复任务栈，回到上次的路径+状态。不重新 classify。"
+    action: "恢复任务栈+路径+状态。但 phase 和 methodology 必须 re-evaluate（项目状态可能变了）。仅 task_stack/current_path/current_state 热恢复。输出: 'hot recovery: 恢复任务栈, phase re-evaluated: unknown→toolkit'。"
   warm_recovery:
     condition: "recovery=warm"
     action: "从 handoff/OMEGA 重建任务上下文，然后按用户当前请求 classify。"

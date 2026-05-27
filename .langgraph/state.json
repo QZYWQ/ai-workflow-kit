@@ -1,28 +1,19 @@
 {
   "active_task": "self-host development — workflow kit self-analysis + fixes",
   "task_stack": [
-    "fix documentation inconsistencies",
-    "self-analyze protocol effectiveness",
-    "create state.json for hot recovery"
+    "self-analysis round 2 — verify fixes with fresh takeover"
   ],
   "current_path": "B",
   "current_state": "execute",
   "last_decision": "v2.6 方法学动态激活+BDD/DDD集成",
-  "last_updated": "2026-05-27T12:00:00+08:00",
-  "outputs_pending_verification": [
-    "methodology-activation.yaml",
-    "intelligent-takeover.yaml (v1.1)",
-    "task-router.yaml (v2.6)",
-    "code-implementation.yaml (v2.2)",
-    "design-planning.yaml (v2.2)",
-    "tests/e2e/test-methodology-integration.py",
-    "tests/e2e/test-dynamic-activation.py"
-  ],
+  "last_updated": "2026-05-27T12:30:00+08:00",
+  "outputs_pending_verification": [],
   "methodology_state": {
-    "phase": "unknown",
+    "phase": "toolkit",
     "tdd": "active",
-    "bdd": "passive",
+    "bdd": "off",
     "ddd": "passive",
     "verify_full": "passive"
-  }
+  },
+  "phase": "toolkit"
 }
