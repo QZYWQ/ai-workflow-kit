@@ -577,6 +577,12 @@ states:
     - 提交操作
     next: execute
     self_check: 每个引用的工具都在 Methodology Card 的 available_tools 中吗?
+    override:
+      mechanism: 用户显式覆盖状态约束
+      trigger: 用户说 "override" 或 "不管规则, 直接做" 或 "跳过这个检查"
+      behavior: 记录覆盖原因, 然后允许执行被禁止的操作。不静默跳过。
+      format: '[OVERRIDE] 状态: plan | 禁止: Write | 原因: 原型验证不需要完整设计 | 用户确认: yes'
+      principle: 工作流是建议, 不是监狱。用户有权覆盖——但覆盖必须有记录, 不能沉默。
   execute:
     order: 3
     on_enter: 逐步骤执行, 每步完成后标记 [✓]。遇错暂停。
@@ -622,6 +628,7 @@ states:
     - omega_store(content, 'decision') — 关键决策
     - langgraph-cli remember — 用户明确'记住这个'的
     - '输出: 变更文件 + 验证结果 + 后续建议'
+    - 'audit: 对照每个已通过状态的 forbid 列表, 检查实际行为。记录违规(如有)。不阻止完成——仅记录供下次会话审视。'
     output: '## 完成摘要
 
       - 任务: ...
@@ -629,6 +636,15 @@ states:
       - 产出: ...
 
       - 决策: ...'
+    audit_check:
+      description: 事后审计——不预防违规, 但记录违规以供回顾
+      checks:
+      - assess/classify 状态是否执行了 Bash/Write/Edit?
+      - plan 状态是否执行了 Write/Edit?
+      - preflight 是否执行了写操作?
+      - 是否有路径 A 分类但实际执行了文件修改?
+      output: 'audit: N 次 forbid 违规 | 原因: [用户明确 override | AI 未遵守 | 分类错误]'
+      principle: 审计是追责机制, 不是预防机制。违规记录帮助发现 prompt 级约束的盲区。
 error_levels:
   exp:
     desc: 已知会发生的失败
