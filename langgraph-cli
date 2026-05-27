@@ -614,9 +614,26 @@ def build_graph(target: Path) -> dict:
     adr_dir = target / "docs" / "adr"
     if adr_dir.is_dir():
         for adr_file in sorted(adr_dir.glob("*.md")):
+            status = "unknown"
+            try:
+                content = adr_file.read_text()
+                lines = content.split("\n")
+                for i, line in enumerate(lines[:10]):
+                    if line.startswith("## Status") or line.startswith("**Status"):
+                        # Check current line and next line for status keyword
+                        combined = line + " " + (lines[i+1] if i+1 < len(lines) else "")
+                        if "accepted" in combined.lower():
+                            status = "accepted"
+                        elif "proposed" in combined.lower():
+                            status = "proposed"
+                        elif "deprecated" in combined.lower():
+                            status = "deprecated"
+                        break
+            except:
+                pass
             nodes["decisions"].append({
                 "title": adr_file.stem,
-                "status": "accepted",
+                "status": status,
                 "path": str(adr_file.relative_to(target))
             })
 
@@ -699,17 +716,25 @@ def graph_update(directory: str = typer.Option(".", "--dir", "-d"),
     old = json.loads(gf.read_text())
     new = build_graph(target)
 
-    old_files = {f["path"] for f in old["nodes"]["files"]}
-    new_files = {f["path"] for f in new["nodes"]["files"]}
-    added = new_files - old_files
-    removed = old_files - new_files
+    old_files = {f["path"]: f for f in old["nodes"]["files"]}
+    new_files = {f["path"]: f for f in new["nodes"]["files"]}
+    added = set(new_files.keys()) - set(old_files.keys())
+    removed = set(old_files.keys()) - set(new_files.keys())
+    # 检测修改：文件路径相同但 cluster 不同(内容变了可能改变分类)
+    modified = {p for p in set(old_files.keys()) & set(new_files.keys())
+                if old_files[p] != new_files[p]}
 
     gf.write_text(json.dumps(new, indent=2, ensure_ascii=False))
 
     if json_output:
-        typer.echo(json.dumps({"added": len(added), "removed": len(removed)}, ensure_ascii=False))
+        typer.echo(json.dumps({"added": len(added), "removed": len(removed),
+                               "modified": len(modified)}, ensure_ascii=False))
     else:
-        typer.echo(f"✅ 图谱已更新: +{len(added)}/-{len(removed)} 文件")
+        parts = []
+        if added: parts.append(f"+{len(added)}")
+        if removed: parts.append(f"-{len(removed)}")
+        if modified: parts.append(f"~{len(modified)}")
+        typer.echo(f"✅ 图谱已更新: {' '.join(parts) if parts else '无变更'} 文件")
 
 @graph_app.command("query")
 def graph_query(question: str = typer.Argument(..., help="查询: depends:<file> | tasks | capabilities | decisions"),

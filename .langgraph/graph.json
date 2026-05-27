@@ -117,6 +117,11 @@
         "cluster": "root"
       },
       {
+        "path": "test-new-file.md",
+        "type": ".md",
+        "cluster": "root"
+      },
+      {
         "path": "CLAUDE.md",
         "type": ".md",
         "cluster": "root"
@@ -145,7 +150,7 @@
     "decisions": [
       {
         "title": "001-multi-methodology-progressive-disclosure",
-        "status": "accepted",
+        "status": "unknown",
         "path": "docs/adr/001-multi-methodology-progressive-disclosure.md"
       }
     ],
@@ -241,5 +246,5 @@
       "type": "depends_on"
     }
   ],
-  "last_updated": "2026-05-27T21:27:04.694958"
+  "last_updated": "2026-05-27T21:32:13.455567"
 }
