@@ -215,9 +215,24 @@ behavior:
     trigger: "complexity_signal 被检测到"
     behavior: "不自动升级——输出 [METHODOLOGY SUGGEST] 等待用户确认"
     cooldown: "建议被拒绝后, 30分钟内不再建议相同升级"
+    signal_checks:
+      domain_richness: "CONTEXT.md 领域术语 ≥10? 或代码中 ≥5 个业务规则函数? → 建议 DDD passive→active"
+      cross_module_growth: "最近 10 次提交新增 ≥3 跨模块 import? gitnexus impact 频繁 HIGH? → 建议 BDD+DDD active"
+      behavior_regression: "最近修复的 bug ≥2 个是行为偏差? 用户说 '行为不符合预期'? → 建议 BDD active"
+      team_scale: "项目 ≥2 活跃贡献者? PR review 中有行为理解不一致? → 建议 BDD active"
+    check_on:
+      - "接管完成后(与 phase detection 同时)"
+      - "plan 状态进入时"
+      - "implement 中发现 scope creep 时"
+
   phase_transition:
     trigger: "phase_transition signal 被检测到"
     behavior: "自动更新所有 methodology 到新阶段默认级别, 输出 Phase Transition Card"
+    user_override_priority: |
+      用户手动设置的激活级别优先于 phase 自动切换。
+      如果用户说过 "关闭 BDD" → BDD=off —— phase 从 prototype 自动升级到 mvp 时,
+      BDD 保持 off, 不随 phase 默认值变化。其他未手动覆盖的方法学正常自动升级。
+      用户说 "恢复默认" → 清空所有手动覆盖, 回到 phase 默认。
 # ═══════════════════════════════════════════
 # state.json — 项目状态描述符（最小 schema）
 # ═══════════════════════════════════════════
