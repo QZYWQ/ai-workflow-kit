@@ -1062,6 +1062,22 @@ langgraph-cli 命令速查
     else:
         (target/".langgraph"/"CLAUDE.md").write_text(claude_md_protocol + project_section)
 
+    # Copy specs templates from shared install to project
+    specs_src = Path.home() / ".local" / "share" / "langgraph-cli" / "specs"
+    specs_dst = target / ".langgraph" / "specs"
+    if specs_src.exists() and any(specs_src.iterdir()):
+        specs_dst.mkdir(parents=True, exist_ok=True)
+        copied = 0
+        for sf in specs_src.glob("*.yaml"):
+            dst_file = specs_dst / sf.name
+            if not dst_file.exists() or force:
+                dst_file.write_text(sf.read_text(encoding="utf-8"))
+                copied += 1
+        if copied:
+            typer.echo(f"  📋 specs: {copied} 个配置已同步到 .langgraph/specs/")
+    elif not specs_src.exists():
+        typer.echo("  ⚠ specs 模板未安装。运行 install.sh 重新安装。")
+
     if deep:
         deep_created = []
         # Only create src/CLAUDE.md if src/ has actual code

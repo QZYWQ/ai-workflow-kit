@@ -16,6 +16,13 @@ sed "s|#!/Users/zpdedn/.venv/langgraph/bin/python3|#!$VENV/bin/python3|" \
     "$SCRIPT_DIR/langgraph-cli" > "$HOME/.local/bin/langgraph-cli"
 chmod +x "$HOME/.local/bin/langgraph-cli"
 
+# ====== 2b. Specs templates ======
+echo "→ Specs templates..."
+SPECS_DIR="$HOME/.local/share/langgraph-cli/specs"
+mkdir -p "$SPECS_DIR"
+cp "$SCRIPT_DIR/.langgraph/specs/"*.yaml "$SPECS_DIR/" 2>/dev/null
+echo "  (已安装到 $SPECS_DIR)"
+
 # ====== 3. GitNexus ======
 if command -v gitnexus &>/dev/null; then
     echo "→ GitNexus (已装)"
